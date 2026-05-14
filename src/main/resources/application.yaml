@@ -1,0 +1,15 @@
+spring:
+  application:
+    name: stone-ai-exam
+  datasource:
+    username: root
+    password: 123456
+    url: jdbc:mysql://localhost:3306/stone_ai_exam?useUnicode=true&characterEncoding=utf-8&zeroDateTimeBehavior=convertToNull&transformedBitIsBoolean=true&allowMultiQueries=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Shanghai
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+server:
+  port: 8080
+
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
