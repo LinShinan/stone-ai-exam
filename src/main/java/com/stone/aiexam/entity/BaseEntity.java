@@ -1,6 +1,7 @@
 package com.stone.aiexam.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
 
@@ -17,9 +18,12 @@ public class BaseEntity implements Serializable {
     @Schema(description = "创建时间")
     private Date createTime;
 
+    @JsonIgnore
     @Schema(description = "修改时间")
     private Date updateTime;
 
+    @JsonIgnore
+    @TableLogic // 逻辑删除
     @Schema(description = "逻辑删除")
     @TableField("is_deleted")
     private Byte isDeleted;

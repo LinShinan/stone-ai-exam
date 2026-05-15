@@ -31,3 +31,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code ###
+.claude/
+
+### Secret config ###
+src/main/resources/application-secret.yaml
