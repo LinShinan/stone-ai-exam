@@ -6,7 +6,6 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stone.aiexam.entity.Notice;
 import com.stone.aiexam.mapper.NoticeMapper;
 import com.stone.aiexam.service.NoticeService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -14,8 +13,6 @@ import java.util.List;
 @Service
 public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> implements NoticeService {
 
-    @Autowired
-    private NoticeMapper noticeMapper;
 
     /**
      * 获取最新的启用的公告
@@ -30,7 +27,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
                 .orderByDesc(Notice::getPriority)
                 .orderByDesc(Notice::getCreateTime)
                 .last("LIMIT "+limit);
-        return noticeMapper.selectList(queryWrapper);
+        return list(queryWrapper);
     }
 
     /**
@@ -44,7 +41,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
         queryWrapper.eq(Notice::getIsActive,true)
                 .orderByDesc(Notice::getPriority)
                 .orderByDesc(Notice::getCreateTime);
-        return noticeMapper.selectList(queryWrapper);
+        return list(queryWrapper);
     }
 
     /**
@@ -56,6 +53,6 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
     public void enableOrDisableNotice(Long id, boolean isActive) {
         LambdaUpdateWrapper<Notice> updateWrapper= new LambdaUpdateWrapper<>();
         updateWrapper.eq(Notice::getId,id).set(Notice::getIsActive,isActive);
-        noticeMapper.update(updateWrapper);
+        update(updateWrapper);
     }
 }
