@@ -1,16 +1,15 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
-
 import java.util.List;
 
 /**
- * 题目批量导入Vo - 用于Excel导入和AI生成题目的数据传输
+ * 题目批量导入DTO - 用于Excel导入和AI生成题目的数据传输
  */
 @Data
 @Schema(description = "题目导入数据传输对象")
-public class QuestionImportVO {
+public class QuestionImportDTO {
     
     @Schema(description = "题目标题内容", 
             example = "以下关于Java面向对象编程的说法正确的是？", 
@@ -48,7 +47,7 @@ public class QuestionImportVO {
     private String analysis; // 题目解析
     
     @Schema(description = "选择题选项列表（仅选择题需要）")
-    private List<ChoiceImportDto> choices; // 选择题选项
+    private List<ChoiceImportDTO> choices; // 选择题选项
     
     @Schema(description = "题目答案（判断题和简答题使用）", 
             example = "正确")
@@ -63,7 +62,7 @@ public class QuestionImportVO {
      */
     @Data
     @Schema(description = "选择题选项数据")
-    public static class ChoiceImportDto {
+    public static class ChoiceImportDTO {
         
         @Schema(description = "选项内容", 
                 example = "Java支持多重继承", 

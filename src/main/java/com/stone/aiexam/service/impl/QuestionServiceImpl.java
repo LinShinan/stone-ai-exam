@@ -3,6 +3,7 @@ package com.stone.aiexam.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.stone.aiexam.dto.QuestionImportDTO;
 import com.stone.aiexam.dto.QuestionQueryDTO;
 import com.stone.aiexam.entity.PaperQuestion;
 import com.stone.aiexam.entity.Question;
@@ -14,6 +15,9 @@ import com.stone.aiexam.mapper.QuestionAnswerMapper;
 import com.stone.aiexam.mapper.QuestionChoiceMapper;
 import com.stone.aiexam.mapper.QuestionMapper;
 import com.stone.aiexam.service.QuestionService;
+import com.stone.aiexam.utils.ExcelUtil;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ZSetOperations;
@@ -22,12 +26,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.stone.aiexam.common.StoneConstant.HOT_QUESTION_KEY;
 
+@Slf4j
 @Service
 public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> implements QuestionService {
 
@@ -280,6 +287,56 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
     }
 
     /**
+     * 预览Excel
+     * @param file
+     * @return
+     */
+    @Override
+    public List<QuestionImportDTO> previewExcel(MultipartFile file) throws IOException {
+        //1.校验文件是否为空
+        if(file.isEmpty()){
+            throw new BusinessException("文件不能为空");
+        }
+        //2.校验文件是否为Excel文件
+        String filename = file.getOriginalFilename();
+        if(filename == null || (!filename.endsWith(".xlsx") && !filename.endsWith(".xls"))){
+            throw new BusinessException("文件格式错误，只能上传.xlsx或.xls文件");
+        }
+        //3.读取Excel文件
+        return ExcelUtil.parseQuestionTemplate(file);
+    }
+
+
+    /**
+     * 批量导入题目
+     * @param questionImportDTOs
+     * @return
+     */
+    @Override
+    public String importQuestionBatch(List<QuestionImportDTO> questionImportDTOs) {
+        //1. 确保题目数据不为空
+        if(CollectionUtils.isEmpty(questionImportDTOs)){
+            return "导入结束，请确保填写了题目数据";
+        }
+        //2. 服务降级结构,且将questionImportDTO转换成question
+        int successCount = 0;
+        for(QuestionImportDTO questionImport :questionImportDTOs){
+            try{
+                Question question = convertImportToQuestion(questionImport);
+                //3. 保存题目
+                addQuestion(question);
+                successCount++;
+            }catch(Exception e){
+                log.error("题目{}导入失败", questionImport.getTitle(),e);
+            }
+        }
+
+        //4. 结果分析
+        return String.format("导入结束，共%d条数据，成功导入%d道题目", questionImportDTOs.size(), successCount);
+
+    }
+
+    /**
      * 增加题目热度分数
      */
     @Async// 异步执行
@@ -329,5 +386,49 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
                 }
             }
         });
+    }
+
+
+    /**
+     * 将QuestionImportDTO转换成Question对象
+     * @param questionImport
+     * @return
+     */
+    private Question convertImportToQuestion(QuestionImportDTO questionImport){
+        Question question = new Question();
+        //1. 普通属性复制
+        BeanUtils.copyProperties(questionImport,question);
+        //2. 如果题型是选择题，则需要处理选项
+        if("CHOICE".equals(question.getType())){
+
+            List<QuestionImportDTO.ChoiceImportDTO> choiceDTOs= questionImport.getChoices();
+            if(!choiceDTOs.isEmpty()){
+                List<QuestionChoice> choiceList = new ArrayList<>(choiceDTOs.size());
+                for(int i=0;i<choiceDTOs.size();i++){
+                    QuestionImportDTO.ChoiceImportDTO choiceImportDTO = choiceDTOs.get(i);
+                    QuestionChoice choice = new QuestionChoice();
+                    choice.setContent(choiceImportDTO.getContent());
+                    choice.setIsCorrect(choiceImportDTO.getIsCorrect());
+                    choice.setSort(i);
+
+                    choiceList.add(choice);
+                }
+                question.setChoices(choiceList);
+            }
+        }
+        //3. 答案处理
+        //question里面的answer是QuestionAnswer类型
+        QuestionAnswer questionAnswer = new QuestionAnswer();
+        questionAnswer.setKeywords(questionImport.getKeywords());
+        //如果是判断题，答案需要转换成大写
+        String answer = questionImport.getAnswer();
+        if("JUDGE".equals(question.getType())){
+            questionAnswer.setAnswer(answer==null?"":answer.toUpperCase());
+        }else{
+            questionAnswer.setAnswer(questionImport.getAnswer());
+        }
+        question.setAnswer(questionAnswer);
+
+        return question;
     }
 }

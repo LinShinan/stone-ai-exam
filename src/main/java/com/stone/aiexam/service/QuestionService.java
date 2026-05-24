@@ -2,9 +2,12 @@ package com.stone.aiexam.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.stone.aiexam.dto.QuestionImportDTO;
 import com.stone.aiexam.dto.QuestionQueryDTO;
 import com.stone.aiexam.entity.Question;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -48,4 +51,18 @@ public interface QuestionService extends IService<Question> {
      * @return
      */
     List<Question> getPopularQuestionList(Integer size);
+
+    /**
+     * 预览Excel文件
+     * @param file
+     * @return
+     */
+    List<QuestionImportDTO> previewExcel(MultipartFile file) throws IOException;
+
+    /**
+     * 批量导入题目
+     * @param questionImportDTOs
+     * @return
+     */
+    String importQuestionBatch(List<QuestionImportDTO> questionImportDTOs);
 }
