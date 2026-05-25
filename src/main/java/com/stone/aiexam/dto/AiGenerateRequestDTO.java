@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Max;
@@ -7,11 +7,11 @@ import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * AI生成题目请求Vo - 智能生成题目所需的参数
+ *  智能生成题目所需的参数
  */
 @Data
 @Schema(description = "AI智能生成题目请求参数")
-public class AiGenerateRequestVo {
+public class AiGenerateRequestDTO {
     
     @Schema(description = "生成题目的主题", 
             example = "Java面向对象编程", 
@@ -48,5 +48,5 @@ public class AiGenerateRequestVo {
     
     @Schema(description = "额外的生成要求和说明", 
             example = "重点考察实际应用，包含代码示例")
-    private String requirements; // 额外要求，如"重点考察实际应用"
+    private String requirements; // 额外要求
 } 

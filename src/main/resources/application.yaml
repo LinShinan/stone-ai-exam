@@ -19,6 +19,20 @@ spring:
       port: 6379
       password: 123456
       database: 1 # 使用DB1,可选以根据自己需要修改
+
+  ai:
+    openai:
+      base-url: https://api.deepseek.com
+
+      chat:
+        options:
+          model: deepseek-v4-pro
+      retry:
+        max-attempts: 3 # 服务降级：最大重试3次
+        backoff:
+          initial-interval: 2000
+          multiplier: 2
+
 server:
   port: 8080
 

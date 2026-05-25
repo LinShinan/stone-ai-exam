@@ -1,8 +1,10 @@
 package com.stone.aiexam.controller;
 
 import com.stone.aiexam.common.Result;
+import com.stone.aiexam.dto.AiGenerateRequestDTO;
 import com.stone.aiexam.dto.QuestionImportDTO;
 import com.stone.aiexam.entity.Question;
+import com.stone.aiexam.service.AiQuestionService;
 import com.stone.aiexam.service.QuestionService;
 import com.stone.aiexam.utils.ExcelUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,6 +29,9 @@ public class QuestionBatchController {
 
     @Autowired
     private QuestionService questionService;
+
+    @Autowired
+    private AiQuestionService aiQuestionService;
 
     /**
      * 下载题目导入模板
@@ -68,5 +74,18 @@ public class QuestionBatchController {
         String result = questionService.importQuestionBatch(questionImportDTOs);
         log.info("result: {}", result);
         return Result.success(result, "批量导入完成");
+    }
+
+    /**
+     * AI生成题目
+     * @param request
+     * @return
+     */
+    @Operation(summary="AI生成题目")
+    @PostMapping("/ai-generate")
+    public Result<List<QuestionImportDTO>> aiGenerate(@RequestBody @Validated AiGenerateRequestDTO request){
+        List<QuestionImportDTO> questions = aiQuestionService.aiGenerateQuestions(request);
+        log.info("ai生成题目...");
+        return Result.success(questions);
     }
 }
