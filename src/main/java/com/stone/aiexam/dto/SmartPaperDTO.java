@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -6,11 +6,11 @@ import lombok.Data;
 import java.util.List;
 
 /**
- * AI智能组卷的请求数据传输对象
+ * 智能组卷的请求数据传输对象
  */
 @Data
 @Schema(description = "AI智能组卷请求参数")
-public class AiPaperVO {
+public class SmartPaperDTO {
 
     @Schema(description = "试卷名称", 
             example = "Java高级编程考试", 
@@ -29,5 +29,5 @@ public class AiPaperVO {
 
     @Schema(description = "AI组卷规则列表，定义不同题型的数量、分值等要求", 
             requiredMode = Schema.RequiredMode.REQUIRED)
-    private List<RuleVO> rules;
+    private List<RuleDTO> rules;
 } 

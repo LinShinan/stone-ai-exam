@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Data;
@@ -12,7 +12,7 @@ import java.util.Map;
  */
 @Data
 @Schema(description = "试卷创建请求参数")
-public class PaperVO implements Serializable {
+public class PaperDTO implements Serializable {
 
     @Schema(description = "试卷名称", 
             example = "Java基础知识测试卷", 
@@ -31,7 +31,7 @@ public class PaperVO implements Serializable {
 
     @Schema(description = "试卷题目配置，Key为题目ID，Value为该题分数", 
             example = "{\"1\": 5.0, \"2\": 10.0, \"3\": 15.0}")
-    private Map<Integer, BigDecimal> questions; // 题目ID及分值
+    private Map<Integer, BigDecimal> questions; //题目ID及分值
 
-    private static final long serialVersionUID = 1L; // 序列化版本UID
+    private static final long serialVersionUID = 1L; //序列化版本UID
 } 

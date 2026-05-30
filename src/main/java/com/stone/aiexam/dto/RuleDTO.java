@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import com.stone.aiexam.entity.QuestionType;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -11,7 +11,7 @@ import java.util.List;
  */
 @Data
 @Schema(description = "AI组卷规则配置")
-public class RuleVO {
+public class RuleDTO {
 
     @Schema(description = "题目类型", 
             example = "CHOICE", 

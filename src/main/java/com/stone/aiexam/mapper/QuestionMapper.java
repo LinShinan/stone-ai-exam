@@ -18,4 +18,10 @@ public interface QuestionMapper extends BaseMapper<Question> {
      */
     @Select("select category_id,count(*) as count from questions where is_deleted =0 group by category_id")
     List<Map<String,Long>> getQuestionCountMap();
+
+    /**
+     * 根据paperId获取题目详情
+     * @param paperId
+     */
+    List<Question> getQuestionDetailByPaperId(Long paperId);
 }
