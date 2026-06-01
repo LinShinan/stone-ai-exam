@@ -3,8 +3,7 @@ package com.stone.aiexam.controller;
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.dto.AiGenerateRequestDTO;
 import com.stone.aiexam.dto.QuestionImportDTO;
-import com.stone.aiexam.entity.Question;
-import com.stone.aiexam.service.AiQuestionService;
+import com.stone.aiexam.service.AiService;
 import com.stone.aiexam.service.QuestionService;
 import com.stone.aiexam.utils.ExcelUtil;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,7 +30,7 @@ public class QuestionBatchController {
     private QuestionService questionService;
 
     @Autowired
-    private AiQuestionService aiQuestionService;
+    private AiService aiService;
 
     /**
      * 下载题目导入模板
@@ -84,7 +83,7 @@ public class QuestionBatchController {
     @Operation(summary="AI生成题目")
     @PostMapping("/ai-generate")
     public Result<List<QuestionImportDTO>> aiGenerate(@RequestBody @Validated AiGenerateRequestDTO request){
-        List<QuestionImportDTO> questions = aiQuestionService.aiGenerateQuestions(request);
+        List<QuestionImportDTO> questions = aiService.aiGenerateQuestions(request);
         log.info("ai生成题目...");
         return Result.success(questions);
     }

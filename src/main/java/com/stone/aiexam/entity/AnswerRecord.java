@@ -14,7 +14,8 @@ import lombok.NoArgsConstructor;
 @Data
 @NoArgsConstructor
 @Schema(description = "答题记录信息")
-public class AnswerRecord extends BaseEntity {
+public class
+AnswerRecord extends BaseEntity {
 
     @Schema(description = "关联的考试记录ID", 
             example = "1")

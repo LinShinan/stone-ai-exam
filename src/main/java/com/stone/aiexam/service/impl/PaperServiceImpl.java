@@ -268,9 +268,9 @@ public class PaperServiceImpl extends ServiceImpl<PaperMapper, Paper> implements
             return 9;
         }
         return switch (type) {
-            case "CHOICE" -> 1;
-            case "JUDGMENT" -> 2;
-            case "FILL_BLANK" -> 3;
+            case StoneConstant.QUESTION_TYPE_CHOICE -> 1;
+            case StoneConstant.QUESTION_TYPE_JUDGE -> 2;
+            case StoneConstant.QUESTION_TYPE_TEXT -> 3;
             default -> 9;
         };
     }

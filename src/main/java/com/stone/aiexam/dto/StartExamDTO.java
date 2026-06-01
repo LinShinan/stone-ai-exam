@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
@@ -6,11 +6,11 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
- * 开始考试请求VO - 学生开始考试时提交的参数
+ * 开始考试请求- 学生开始考试时提交的参数
  */
 @Data
 @Schema(description = "开始考试请求参数")
-public class StartExamVO {
+public class StartExamDTO {
     
     @Schema(description = "试卷ID，指定要参加的考试试卷", 
             example = "1", 

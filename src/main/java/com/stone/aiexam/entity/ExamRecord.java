@@ -5,7 +5,10 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -13,6 +16,9 @@ import java.util.List;
 /**
  * 考试记录表 - 存储学生的考试过程和结果数据
  */
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @TableName(value ="exam_records")
 @Data
 @Schema(description = "考试记录信息")
@@ -30,9 +36,9 @@ public class ExamRecord extends BaseEntity {
             example = "85")
     private Integer score; // 得分
 
-    @Schema(description = "答题记录，JSON格式存储所有答题内容", 
-            example = "[{\"questionId\":1,\"userAnswer\":\"A\"},{\"questionId\":2,\"userAnswer\":\"B\"}]")
-    private String answers; // 答题记录
+    @Schema(description = "ai作答分析总结",
+            example = "考生Java基础扎实，但对某些概念理解不够深刻")
+    private String summary; // 答题记录
 
     @Schema(description = "考试开始时间", 
             example = "2024-01-15 09:00:00")

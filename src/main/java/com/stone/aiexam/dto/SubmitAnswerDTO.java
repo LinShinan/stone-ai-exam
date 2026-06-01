@@ -1,4 +1,4 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +11,9 @@ import java.io.Serializable;
  */
 @Data
 @Schema(description = "考试答案提交数据")
-public class SubmitAnswerVO implements Serializable {
+public class SubmitAnswerDTO implements Serializable {
+
+    private static final long serialVersionUID = 1L; // 序列化版本UID
 
     @Schema(description = "题目ID，指定回答的是哪道题", 
             example = "1", 
@@ -24,5 +26,4 @@ public class SubmitAnswerVO implements Serializable {
             requiredMode = Schema.RequiredMode.REQUIRED)
     private String userAnswer; // 用户答案
 
-    private static final long serialVersionUID = 1L; // 序列化版本UID
 } 

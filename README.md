@@ -6,11 +6,13 @@
 
 ![Java](https://img.shields.io/badge/Java-21-orange?style=flat-square&logo=openjdk)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.14-brightgreen?style=flat-square&logo=spring)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-1.1.5-brightgreen?style=flat-square)
 ![MyBatis-Plus](https://img.shields.io/badge/MyBatis--Plus-3.5.15-blue?style=flat-square)
 ![MySQL](https://img.shields.io/badge/MySQL-8.0+-blue?style=flat-square&logo=mysql)
 ![Knife4j](https://img.shields.io/badge/Knife4j-4.4.0-blue?style=flat-square&logo=knife4j)
 ![X-File-Storage](https://img.shields.io/badge/X--File--Storage-2.3.0-blue?style=flat-square)
 ![Aliyun OSS](https://img.shields.io/badge/Aliyun%20OSS-3.17.4-blue?style=flat-square)
+![Apache POI](https://img.shields.io/badge/Apache%20POI-5.4.1-blue?style=flat-square)
 ![Redis](https://img.shields.io/badge/Redis-7.0+-red?style=flat-square)
 
 **状态**: 🚧 开发中
@@ -33,11 +35,13 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 | -------------- | ------ | -------- |
 | Java           | 21     | 开发语言     |
 | Spring Boot    | 3.5.14 | 核心框架     |
+| Spring AI      | 1.1.5  | AI 集成框架 |
 | MyBatis-Plus   | 3.5.15 | ORM 框架   |
 | MySQL          | 8.0+   | 关系型数据库   |
 | Knife4j        | 4.4.0  | API 文档工具 |
 | X-File-Storage | 2.3.0  | 文件存储框架   |
 | Aliyun OSS SDK | 3.17.4 | 阿里云对象存储  |
+| Apache POI     | 5.4.1  | Excel 读写 |
 | Redis          | 7.0+   | 缓存与排行   |
 | Lombok         | -      | 代码简化     |
 
@@ -52,6 +56,11 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 - ✅ 公告管理（Notice CRUD + 启用/禁用 + 最新/激活筛选）
 - ✅ 题目分类管理（Category CRUD + 树形结构 + 题目数量统计）
 - ✅ 题库管理（Question CRUD + 多表关联 + 条件筛选 + Redis 热门排行）
+- ✅ 试卷管理（Paper CRUD + 手动组卷 + 智能组卷 + 状态流转）
+- ✅ 考试管理（开始考试 → 提交试卷 → AI 自动批阅 + AI 考试总结）
+- ✅ AI 题目生成（Spring AI 集成 + 结构化提示词 + 多题型支持）
+- ✅ 批量导入题目（Excel 模板下载 + 预览 + 批量导入）
+- ✅ AI 简答题批阅（语义分析 + 分级评分 + 反馈与扣分依据）
 
 ## 📦 快速开始
 
@@ -67,6 +76,10 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 - **配置数据库**
 
   修改 `src/main/resources/application.yaml` 中的数据库配置
+
+- **配置 AI**
+
+  修改 `src/main/resources/application.yaml` 中的 Spring AI 配置（OpenAI API Key 等）
 
 - **编译运行**
 
@@ -327,6 +340,278 @@ MyBatis-Plus 的 `Page` 是引用类型，Controller new 出来传给 Service，
 
 ---
 
+## 📋 试卷管理
+
+**业务场景**：试卷是考试的载体，管理员可以手动挑选题目组卷，也可以通过 AI 智能组卷规则自动生成试卷。试卷有完整的生命周期：草稿 → 发布 → 停止。
+
+### 数据模型
+
+```
+paper 表                          paper_question 关联表
+┌──────────────────┐             ┌──────────────────┐
+│ id               │             │ id               │
+│ name             │────────────>│ paperId          │
+│ description      │             │ questionId       │
+│ status           │             │ score            │  ← 题目在试卷中的分值
+│ totalScore       │             └──────────────────┘
+│ questionCount    │
+│ duration         │             Question (题目主表)
+└──────────────────┘             ┌──────────────────┐
+                                 │ id               │
+                                 │ title            │
+                                 │ type             │
+                                 │ ...              │
+                                 │ paperScore       │  ← @TableField(exist=false)
+                                 └──────────────────┘
+```
+
+关键设计：同一道题在不同试卷中可以有不同的分值，所以 `score` 存在关联表 `paper_question` 中，而不是题目主表中。查询试卷详情时通过多表 JOIN 将分值注入 `Question.paperScore` 字段。
+
+### 接口
+
+```
+GET    /api/papers/list          试卷列表（支持按名称/状态筛选）
+GET    /api/papers/{id}          试卷详情（含题目列表 + 答案 + 选项）
+POST   /api/papers               手动创建试卷（传入题目ID和分值映射）
+POST   /api/papers/smart         智能组卷（传入规则自动选题）
+PUT    /api/papers/{id}          更新试卷（先删关联再重建）
+PATCH  /api/papers/{id}/status   更新试卷状态（DRAFT → PUBLISHED → STOPPED）
+DELETE /api/papers/{id}          删除试卷（校验发布状态和考试引用）
+```
+
+### 手动组卷流程
+
+```
+POST /api/papers  { name, description, duration, questions: { questionId: score, ... } }
+```
+
+1. 校验试卷名称唯一性
+2. 创建 Paper 记录，status 初始为 DRAFT
+3. 根据 `questions` Map 计算 `totalScore` 和 `questionCount`
+4. 批量插入 `paper_question` 关联记录
+
+### 智能组卷流程
+
+```
+POST /api/papers/smart  { name, description, duration, rules: [...] }
+```
+
+每条规则定义：`{ type: "CHOICE", categoryIds: [1,2], count: 10, score: 5 }` — 表示从分类 1、2 中随机抽 10 道选择题，每题 5 分。
+
+实现要点：
+
+1. **逐规则处理**：遍历 rules，每条规则生成对应题型的 SQL 查询
+2. **不足降级**：题库数量不足时，取实际数量（`Math.min(available, required)`），并 warn 日志记录
+3. **随机选题**：用 `Collections.shuffle()` 打乱查询结果，取前 N 条，保证每次组卷结果不同
+4. **双写更新**：所有规则的题目选择完毕后，统一更新 Paper 的 `totalScore` 和 `questionCount`
+5. **事务保护**：整个组卷过程在 `@Transactional` 下，任一步失败全部回滚
+
+### 业务约束
+
+| 操作 | 约束 |
+|------|------|
+| 创建 | 试卷名称不能重复 |
+| 更新 | 已发布（PUBLISHED）的试卷不允许更新 |
+| 删除 | 已发布不允许删除；被考试记录引用时不允许删除（提示具体条数） |
+| 状态流转 | DRAFT → PUBLISHED → STOPPED（单向，不可逆） |
+
+---
+
+## ✍️ 考试管理
+
+**业务场景**：考生选择试卷开始考试，作答过程中提交答案，考试结束后系统自动批阅。整个流程为：开始考试 → 答题 → 提交试卷 → AI 自动批阅 → 查看成绩与总结。
+
+### 数据模型
+
+```
+exam_records 表                    answer_record 表
+┌──────────────────┐             ┌──────────────────┐
+│ id               │             │ id               │
+│ examId (试卷ID)   │────────────>│ examRecordId     │
+│ studentName      │             │ questionId       │
+│ score            │             │ userAnswer       │
+│ summary (AI总结) │             │ score            │
+│ status           │             │ isCorrect        │
+│ startTime        │             │ aiCorrection     │
+│ endTime          │             └──────────────────┘
+│ windowSwitches   │
+└──────────────────┘
+```
+
+考试状态流转：`进行中` → `已完成` → `已批阅`
+
+作答正确性标记：`0` 错误、`1` 完全正确、`2` 部分正确（简答题专用）
+
+### 接口
+
+```
+POST   /api/exams/start                开始考试
+GET    /api/exams/{id}                 获取考试记录详情（含试卷 + 作答记录）
+POST   /api/exams/{examRecordId}/submit  提交试卷（自动触发批阅）
+POST   /api/exams/{examRecordId}/grade   AI 自动批阅（独立调用，用于重新批阅）
+```
+
+### 开始考试
+
+1. 校验该考生是否已有同试卷的"进行中"记录 → 有则直接返回（幂等，防止重复开考）
+2. 无则创建新记录：`status=进行中`，`startTime=当前时间`
+3. 使用 Builder 模式构建 ExamRecord 对象
+
+### 提交试卷
+
+```
+POST /api/exams/{examRecordId}/submit
+Body: [{ questionId: 1, userAnswer: "A" }, { questionId: 2, userAnswer: "true" }, ...]
+```
+
+1. 批量保存作答记录（只存 `examRecordId` + `questionId` + `userAnswer`，不含分数）
+2. 更新考试记录状态为"已完成"，记录 `endTime`
+3. **自动触发 AI 批阅**（调用 `autoGradeExam`）
+
+### AI 自动批阅
+
+批阅逻辑按题目类型分两路：
+
+```
+选择题/判断题 ──> 程序比对：用户答案 == 标准答案？
+                    ├── 正确 → isCorrect=1, score=满分
+                    └── 错误 → isCorrect=0, score=0
+
+简答题 ──────> AI 语义评分：调用 ChatClient
+                    ├── 传入：题目 + 标准答案 + 学生答案 + 满分
+                    ├── 返回：AiGradingResult { score, feedback, reason }
+                    └── 得分 ≥ 满分 → isCorrect=1
+                        得分 > 0   → isCorrect=2 (部分正确)
+                        得分 = 0   → isCorrect=0
+```
+
+判断题答案归一化：前端可能传来 `T`/`F`、`true`/`false`、`正确`/`错误`、`对`/`错` 等多种格式，`transJudgeAnswer()` 方法统一转为 `TRUE`/`FALSE` 后再比对。
+
+批阅完成后调用 AI 生成考试总结，根据得分率给出个性化学习建议。
+
+### 考试记录详情查询
+
+`GET /api/exams/{id}` 返回的 `ExamRecord` 包含：
+
+- **试卷信息**：通过 `paperService.getDetailById()` 加载完整试卷（含题目 + 答案 + 选项）
+- **作答记录**：按试卷题目顺序排序（用 `questionOrder` Map 索引保证顺序一致性）
+- **AI 批改意见**：简答题的 `aiCorrection` 字段包含 AI 反馈和扣分依据
+
+---
+
+## 🤖 AI 服务
+
+**职责**：封装 Spring AI ChatClient，对外提供三个核心 AI 能力 —— 生成题目、批阅简答题、生成考试总结。
+
+### 架构
+
+```
+AiService（单例 Service）
+    │
+    ├── ChatClient（Spring AI 注入）
+    │       │
+    │       └── OpenAI 兼容 API（可切换任何模型提供商）
+    │
+    ├── aiGenerateQuestions()     题目生成
+    ├── gradeTextAnswer()         简答题批阅
+    └── generateExamSummary()     考试总结
+```
+
+### 1. AI 生成题目
+
+**流程**：
+
+```
+AiGenerateRequestDTO { topic, types, count, difficulty, categoryId, requirements }
+        │
+        ▼
+buildQuestionPrompt()  构建结构化提示词（含题型/难度/数量/JSON格式要求）
+        │
+        ▼
+chatClient.prompt().user(prompt).call().entity(AiQuestionResponse.class)
+        │
+        ▼
+AiQuestionResponse { questions: List<QuestionImportDTO> }
+        │
+        ▼
+注入 categoryId（由前端传入，AI 不知道内部分类体系）
+```
+
+**提示词设计要点**：
+
+- 明确 JSON 输出格式（使用 ````json` 代码块约束 AI 输出）
+- 判断题强调答案分布平衡（TRUE/FALSE 各约 50%）
+- 根据题目类型区别字段要求（选择题有 choices、判断题有 answer 字段、简答题有 answer 字段）
+- 要求每道题都有解析（analysis）
+
+### 2. AI 批阅简答题
+
+**输入**：题目对象（含标准答案）、学生答案、满分值
+
+**提示词策略**：
+
+```
+角色设定：你是一名专业的考试阅卷老师
+输入信息：题目、标准答案、满分、学生答案
+评分标准：
+  - 答案完整正确：80-100% 分数
+  - 基本正确但不完整：60-80% 分数
+  - 部分正确：30-60% 分数
+  - 完全错误或未作答：0 分
+输出格式：JSON { score: int, feedback: str, reason: str }
+```
+
+**容错**：AI 调用失败时返回 `score=0, feedback="AI批改异常，请联系教师"`，确保核心流程不中断。
+
+### 3. AI 生成考试总结
+
+**输入**：考生姓名、试卷名称、总分、满分、总题数、正确题数
+
+**输出**：50-150 字的个性化总评，包含：
+- 客观评价考试表现
+- 指出优势和不足
+- 具体学习建议和改进方向
+- 鼓励和激励
+
+**容错**：AI 调用失败时返回 `"AI总结生成失败，请查看各题批改详情"`。
+
+---
+
+## 📤 题目批量处理
+
+**业务场景**：提供 Excel 批量导入题目的完整链路，以及 AI 辅助生成题目。适用于教师一次性录入大量题目的场景。
+
+### 接口
+
+```
+GET    /api/questions/batch/template        下载 Excel 导入模板
+POST   /api/questions/batch/preview-excel   预览 Excel 文件内容
+POST   /api/questions/batch/import-questions 确认并批量导入
+POST   /api/questions/batch/ai-generate     AI 生成题目
+```
+
+### Excel 批量导入流程
+
+```
+下载模板 → 填写数据 → 上传预览 → 确认导入
+```
+
+1. **下载模板**：`ExcelUtil.createQuestionTemplate()` 用 Apache POI 生成含表头和示例数据的 xlsx 文件
+2. **上传预览**：上传填好的 Excel，后端解析为 `List<QuestionImportDTO>` 返回前端展示，不做入库
+3. **确认导入**：前端确认无误后提交，后端批量写入三表（题目 + 答案 + 选项），返回成功/失败统计
+
+### AI 生成题目
+
+```
+POST /api/questions/batch/ai-generate
+Body: { topic: "Java多线程", types: "CHOICE,JUDGE", count: 10, difficulty: "MEDIUM", categoryId: 1 }
+Response: [{ title, type, choices, answer, analysis, score, difficulty }, ...]
+```
+
+AI 生成的题目以 `QuestionImportDTO` 列表返回，前端可以在预览界面编辑、删减后再确认导入。这样 AI 生成和 Excel 导入共用同一条导入管线。
+
+---
+
 ## 🗂️ 项目文件结构
 
 ```
@@ -334,46 +619,122 @@ stone-ai-exam
 └── src/main/java/com/stone/aiexam/
     ├── common/
     │   ├── Result.java              # 统一响应体 {code, message, data}
-    │   └── StoneConstant.java       # 常量（Redis Key等）
+    │   ├── ResultCode.java          # 响应码枚举
+    │   └── StoneConstant.java       # 常量（状态/类型/Redis Key）
     ├── config/
-    │   └── RedisConfig.java         # Redis 序列化配置
+    │   ├── RedisConfig.java         # Redis 序列化配置
+    │   ├── Knife4jConfig.java       # API 文档配置
+    │   └── MybatisPlusConfig.java   # MyBatis-Plus 配置
     ├── controller/
     │   ├── BannerController.java    # 轮播图管理
     │   ├── NoticeController.java    # 公告管理
     │   ├── CategoryController.java  # 题目分类管理
-    │   └── QuestionController.java  # 题库管理
+    │   ├── QuestionController.java  # 题库管理
+    │   ├── QuestionBatchController.java  # 题目批量处理 + AI生成
+    │   ├── PaperController.java     # 试卷管理
+    │   └── ExamController.java      # 考试管理
     ├── dto/
-    │   └── QuestionQueryDTO.java    # 题目多条件查询参数
+    │   ├── AiGenerateRequestDTO.java # AI生成题目请求
+    │   ├── AiGradingResult.java      # AI批阅结果
+    │   ├── AiQuestionResponse.java   # AI生成题目响应
+    │   ├── PaperDTO.java            # 试卷创建/更新
+    │   ├── QuestionImportDTO.java   # Excel导入/AI生成题目
+    │   ├── QuestionQueryDTO.java    # 题目多条件查询
+    │   ├── RuleDTO.java             # 智能组卷规则
+    │   ├── SmartPaperDTO.java       # 智能组卷请求
+    │   ├── StartExamDTO.java        # 开始考试请求
+    │   └── SubmitAnswerDTO.java     # 提交答案请求
     ├── entity/
     │   ├── BaseEntity.java          # 基类（id/时间/逻辑删除）
+    │   ├── AnswerRecord.java        # 答题记录表
     │   ├── Banner.java
-    │   ├── Notice.java
     │   ├── Category.java
-    │   ├── Question.java            # 题目主表 + @TableField 字段
+    │   ├── ExamRecord.java          # 考试记录表
+    │   ├── Notice.java
+    │   ├── Paper.java               # 试卷表
+    │   ├── PaperQuestion.java       # 试卷-题目关联表
+    │   ├── Question.java            # 题目主表
     │   ├── QuestionAnswer.java      # 答案表
     │   ├── QuestionChoice.java      # 选项表
-    │   └── PaperQuestion.java       # 试卷-题目关联表
+    │   ├── QuestionType.java        # 题目类型枚举
+    │   └── User.java                # 用户表
     ├── exception/
     │   ├── BusinessException.java   # 业务异常
     │   └── GlobalExceptionHandler.java
     ├── mapper/
+    │   ├── AnswerRecordMapper.java
     │   ├── BannerMapper.java
-    │   ├── NoticeMapper.java
     │   ├── CategoryMapper.java
-    │   ├── QuestionMapper.java
+    │   ├── ExamRecordMapper.java
+    │   ├── NoticeMapper.java
+    │   ├── PaperMapper.java
+    │   ├── PaperQuestionMapper.java
     │   ├── QuestionAnswerMapper.java
     │   ├── QuestionChoiceMapper.java
-    │   └── PaperQuestionMapper.java
-    └── service/
-        ├── impl/
-        │   ├── FileServiceImpl.java
-        │   ├── BannerServiceImpl.java
-        │   ├── NoticeServiceImpl.java
-        │   ├── CategoryServiceImpl.java
-        │   └── QuestionServiceImpl.java
-        ├── FileService.java
-        ├── BannerService.java
-        ├── NoticeService.java
-        ├── CategoryService.java
-        └── QuestionService.java
+    │   └── QuestionMapper.java
+    ├── service/
+    │   ├── impl/
+    │   │   ├── AnswerRecordServiceImpl.java
+    │   │   ├── BannerServiceImpl.java
+    │   │   ├── CategoryServiceImpl.java
+    │   │   ├── ExamServiceImpl.java    # 核心：考试+批阅逻辑
+    │   │   ├── FileServiceImpl.java
+    │   │   ├── NoticeServiceImpl.java
+    │   │   ├── PaperQuestionServiceImpl.java
+    │   │   ├── PaperServiceImpl.java   # 核心：组卷逻辑
+    │   │   └── QuestionServiceImpl.java
+    │   ├── AiService.java              # AI 服务（题目生成/批阅/总结）
+    │   ├── AnswerRecordService.java
+    │   ├── BannerService.java
+    │   ├── CategoryService.java
+    │   ├── ExamService.java
+    │   ├── FileService.java
+    │   ├── NoticeService.java
+    │   ├── PaperQuestionService.java
+    │   ├── PaperService.java
+    │   └── QuestionService.java
+    ├── utils/
+    │   └── ExcelUtil.java          # Excel 模板生成工具
+    └── vo/
+        ├── ChatChoice.java         # AI 聊天响应结构
+        ├── ChatMessage.java
+        ├── ChatRequest.java
+        ├── ChatResponse.java
+        ├── ExamRankingVO.java
+        ├── LoginRequestVO.java
+        ├── LoginResponseVO.java
+        ├── PageResult.java
+        ├── ResponseMessage.java
+        ├── StatsVO.java
+        └── Usage.java
+```
+
+---
+
+## 🗃️ 数据库核心表关系
+
+```
+users                    ── 用户表（规划中）
+paper                   ── 试卷表
+paper_question          ── 试卷-题目关联表（N:N，带分值）
+questions               ── 题目主表
+question_answers        ── 题目答案表（1:1）
+question_choices        ── 题目选项表（1:N）
+exam_records            ── 考试记录表
+answer_record           ── 答题记录表
+categories              ── 题目分类表
+banners                 ── 轮播图表
+notices                 ── 公告表
+```
+
+核心链路：
+
+```
+Paper ──(N:N)──> PaperQuestion ──(N:1)──> Question ──(1:1)──> QuestionAnswer
+                                              │
+                                              └──(1:N)──> QuestionChoice
+
+ExamRecord ──(1:N)──> AnswerRecord ──(N:1)──> Question
+    │
+    └──(N:1)──> Paper
 ```

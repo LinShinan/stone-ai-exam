@@ -1,8 +1,10 @@
 package com.stone.aiexam.service;
 
 import com.stone.aiexam.dto.AiGenerateRequestDTO;
+import com.stone.aiexam.dto.AiGradingResult;
 import com.stone.aiexam.dto.AiQuestionResponse;
 import com.stone.aiexam.dto.QuestionImportDTO;
+import com.stone.aiexam.entity.Question;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.stereotype.Service;
 
@@ -10,11 +12,11 @@ import java.util.Arrays;
 import java.util.List;
 
 @Service
-public class AiQuestionService {
+public class AiService {
 
     private  final ChatClient chatClient;
 
-    public AiQuestionService(ChatClient.Builder builder) {
+    public AiService(ChatClient.Builder builder) {
         this.chatClient = builder.build();
     }
     /**
@@ -24,7 +26,7 @@ public class AiQuestionService {
      */
     public List<QuestionImportDTO> aiGenerateQuestions(AiGenerateRequestDTO request){
         //1. 构建提示词
-        String prompt = buildPrompt(request);
+        String prompt = buildQuestionPrompt(request);
         //2. 调用ai生成题目，获取响应
         //AiQuestionResponse类用于和提示词的JSON结构对应
         AiQuestionResponse response = chatClient.prompt().user(prompt).call().entity(AiQuestionResponse.class);
@@ -41,7 +43,7 @@ public class AiQuestionService {
      * @param request
      * @return
      */
-    public String buildPrompt(AiGenerateRequestDTO request) {
+    public String buildQuestionPrompt(AiGenerateRequestDTO request) {
         StringBuilder prompt = new StringBuilder();
 
         prompt.append("请为我生成").append(request.getCount()).append("道关于【")
@@ -138,6 +140,105 @@ public class AiQuestionService {
         }
 
         return prompt.toString();
+    }
+
+    /**
+     * AI批改一道简答题
+     * @param question    题目（含参考答案和关键词）
+     * @param userAnswer  学生答案
+     * @param maxScore    满分
+     * @return 批改结果（得分、反馈、扣分依据）
+     */
+    public AiGradingResult gradeTextAnswer(Question question, String userAnswer, Integer maxScore) {
+        String prompt = buildGradingPrompt(question, userAnswer, maxScore);
+        AiGradingResult result = chatClient.prompt().user(prompt).call().entity(AiGradingResult.class);
+        if (result == null) {
+            result = new AiGradingResult();
+            result.setScore(0);
+            result.setFeedback("AI批改异常，请联系教师");
+            result.setReason("系统错误");
+        }
+        return result;
+    }
+
+    /**
+     * AI生成考试总结报告
+     * @param studentName  考生姓名
+     * @param paperName    试卷名称
+     * @param totalScore   实际得分
+     * @param maxScore     满分
+     * @param totalCount   总题数
+     * @param correctCount 正确题数
+     * @return 总结文本
+     */
+    public String generateExamSummary(String studentName, String paperName,
+                                       int totalScore, int maxScore,
+                                       int totalCount, int correctCount) {
+        String prompt = buildSummaryPrompt(studentName, paperName, totalScore, maxScore,
+                totalCount, correctCount);
+        String result = chatClient.prompt().user(prompt).call().content();
+        return result != null ? result : "AI总结生成失败，请查看各题批改详情";
+    }
+
+    /**
+     * 构建简答题批改提示词
+     */
+    private String buildGradingPrompt(Question question, String userAnswer, Integer maxScore) {
+        String referenceAnswer = question.getAnswer() != null ? question.getAnswer().getAnswer() : "";
+        return String.format("""
+                你是一名专业的考试阅卷老师，请对以下题目进行判卷：
+
+                【题目信息】
+                题型：简答题
+                题目：%s
+                标准答案：%s
+                满分：%d分
+
+                【学生答案】
+                %s
+
+                【判卷要求】
+                - 主观题：根据答案的准确性、完整性、逻辑性进行评分
+                - 答案要点正确且完整：80-100%%分数
+                - 答案基本正确但不够完整：60-80%%分数
+                - 答案部分正确：30-60%%分数
+                - 答案完全错误或未作答：0分
+
+                请按以下JSON格式返回判卷结果：
+                {"score": 实际得分(整数), "feedback": "具体的评价反馈(50字以内)", "reason": "扣分原因或得分依据(30字以内)"}""",
+                question.getTitle(), referenceAnswer, maxScore,
+                userAnswer.trim().isEmpty() ? "（未作答）" : userAnswer);
+    }
+
+    /**
+     * 构建考试总结提示词
+     */
+    private String buildSummaryPrompt(String studentName, String paperName,
+                                       int totalScore, int maxScore,
+                                       int totalCount, int correctCount) {
+        double percentage = (double) totalScore / maxScore * 100;
+        return String.format("""
+                你是一名资深的行业教育专家，请为学生的考试表现提供专业的总评和学习建议：
+
+                【考试信息】
+                考生姓名：%s
+                试卷名称：%s
+
+                【考试成绩】
+                总得分：%d/%d分
+                得分率：%.1f%%
+                题目总数：%d道
+                答对题数：%d道
+
+                【要求】
+                请提供一份50-150的考试总评，包括：
+                1. 对本次考试表现的客观评价
+                2. 指出优势和不足之处
+                3. 提供具体的学习建议和改进方向
+                4. 给予鼓励和激励
+
+                请直接返回总评内容，无需特殊格式：""",
+                studentName, paperName, totalScore, maxScore, percentage, totalCount, correctCount);
     }
 
 }
