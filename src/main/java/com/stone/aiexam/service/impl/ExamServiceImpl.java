@@ -1,6 +1,7 @@
 package com.stone.aiexam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stone.aiexam.common.StoneConstant;
 import com.stone.aiexam.dto.StartExamDTO;
@@ -17,18 +18,19 @@ import com.stone.aiexam.service.AiService;
 import com.stone.aiexam.service.AnswerRecordService;
 import com.stone.aiexam.service.ExamService;
 import com.stone.aiexam.service.PaperService;
+import com.stone.aiexam.vo.ExamRankingVO;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.time.LocalTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -46,6 +48,8 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
 
     @Autowired
     private AiService aiService;
+
+
     /**
      * 开始考试
      * @param startExamDTO
@@ -247,6 +251,85 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
         updateById(examRecord);
 
         return examRecord;
+    }
+
+    /**
+     * 分页查询考试记录
+     * @param examRecordPage
+     * @param studentName
+     * @param status
+     * @param startDate
+     * @param endDate
+     */
+    @Override
+    public void pageQueryExamRecord(Page<ExamRecord> examRecordPage, String studentName, Integer status, LocalDate startDate, LocalDate endDate) {
+        //1. 查询考试记录主体
+        LambdaQueryWrapper<ExamRecord> queryWrapper = new LambdaQueryWrapper<>();
+        if(!ObjectUtils.isEmpty(status)){
+            String statusStr = switch(status){
+                case 0 -> StoneConstant.EXAM_STATUS_PROGRESS;
+                case 1 -> StoneConstant.EXAM_STATUS_FINISH;
+                case 2 -> StoneConstant.EXAM_STATUS_GRADED;
+                default -> null;
+            };
+            queryWrapper.eq(StringUtils.hasText(statusStr), ExamRecord::getStatus, statusStr);
+        }
+
+        LocalDateTime startTime = startDate!=null? startDate.atStartOfDay():null;
+        LocalDateTime endTime = endDate!=null? endDate.atTime(LocalTime.MAX):null;
+
+        queryWrapper.like(StringUtils.hasText(studentName), ExamRecord::getStudentName, studentName)
+                .ge(startTime!=null,ExamRecord::getStartTime,startTime)
+                .le(endTime!=null,ExamRecord::getEndTime,endTime);
+        page(examRecordPage,queryWrapper);
+
+        //2. 查询对应试卷信息（1对1）
+        List<Integer> paperIds = examRecordPage.getRecords().stream().map(ExamRecord::getExamId).toList();
+        if(CollectionUtils.isEmpty(paperIds)){
+            return;//没有试卷ID，结束
+        }
+        List<Paper> papers = paperService.listByIds(paperIds);
+        Map<Long, Paper> paperMap = papers.stream().collect(Collectors.toMap(Paper::getId, p -> p));
+
+        examRecordPage.getRecords().forEach(examRecord->
+                examRecord.setPaper(paperMap.get(examRecord.getExamId().longValue())));
+    }
+
+    /**
+     * 根据id删除考试记录
+     * @param id
+     */
+    @Override
+    public void deleteExamRecordById(Long id) {
+        //1. 校验，如果考试在进行中，不允许删除
+        ExamRecord examRecord = getById(id);
+        if(ObjectUtils.isEmpty(examRecord)){
+            return;
+        }
+
+        if(StoneConstant.EXAM_STATUS_PROGRESS.equals(examRecord.getStatus())){
+            throw new BusinessException("考试进行中，不允许删除");
+        }
+        //2. 删除考试记录
+
+        removeById(id);
+        //3. 删除子数据：答题记录
+        LambdaQueryWrapper<AnswerRecord> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(AnswerRecord::getExamRecordId,id);
+        answerRecordService.remove(queryWrapper);
+    }
+
+    /**
+     * 考试排行榜
+     * @param paperId
+     * @param limit
+     * @return
+     */
+    @Override
+    public List<ExamRankingVO> rank(Integer paperId, Integer limit) {
+        //分析：查询两张表，一个考试记录表，一个试卷表;
+        //查询考试记录表, 而且必须是已批阅的试卷
+        return baseMapper.rank(paperId,limit);
     }
 
     /**

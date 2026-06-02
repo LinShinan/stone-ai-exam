@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.stone.aiexam.mapper.ExamRecordMapper">
+
+    <select id="rank" resultType="com.stone.aiexam.vo.ExamRankingVO">
+        select
+        r.id,
+        r.student_name,
+        r.score,
+        r.exam_id,
+        p.name paper_name,
+        p.total_score paper_total_score,
+        r.start_time,
+        r.end_time,
+        TIMESTAMPDIFF(minute, r.start_time, r.end_time) duration
+        from exam_records r join paper p on r.exam_id = p.id
+        where r.is_deleted = 0 and p.is_deleted = 0 and r.status='已批阅'
+        <if test="paperId!=null">and p.id = #{paperId}</if>
+        order by r.score desc, duration asc
+        <if test="limit!=null and limit>0">limit #{limit}</if>
+    </select>
+</mapper>

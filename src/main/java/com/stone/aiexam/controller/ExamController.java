@@ -1,16 +1,20 @@
 package com.stone.aiexam.controller;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.dto.StartExamDTO;
 import com.stone.aiexam.dto.SubmitAnswerDTO;
 import com.stone.aiexam.entity.ExamRecord;
 import com.stone.aiexam.service.ExamService;
+import com.stone.aiexam.vo.ExamRankingVO;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @CrossOrigin
@@ -75,6 +79,52 @@ public class ExamController {
         examService.autoGradeExam(examRecordId);
         log.info("AI自动批阅，考试记录ID：{}", examRecordId);
         return Result.success();
+    }
+
+
+    /**
+     * 分页查询考试记录
+     * @param page
+     * @param size
+     * @param studentName
+     * @param status
+     * @param startDate
+     * @param endDate
+     * @return
+     */
+    @Operation(summary="分页查询考试记录")
+    @GetMapping("/list")
+    public Result<Page<ExamRecord>> getExamRecordPage(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            String studentName, Integer status,
+            @DateTimeFormat(pattern="yyyy-MM-dd") LocalDate startDate,
+            @DateTimeFormat(pattern="yyyy-MM-dd") LocalDate endDate
+    ){
+        Page<ExamRecord> examRecordPage = new Page<>(page,size);
+        examService.pageQueryExamRecord(examRecordPage,studentName,status,startDate,endDate);
+        return Result.success(examRecordPage);
+    }
+
+    @Operation(summary="删除考试记录")
+    @DeleteMapping("/{id}")
+    public Result<Void> deleteExamRecord(@PathVariable Long id){
+        examService.deleteExamRecordById(id);
+        return Result.success();
+    }
+
+    /**
+     * 考试排行榜
+     * @param paperId
+     * @param limit
+     * @return
+     */
+    @Operation(summary="考试排行榜")
+    @GetMapping("/ranking")
+    public Result<List<ExamRankingVO>> rank(Integer paperId,Integer limit){
+        List<ExamRankingVO> rank = examService.rank(paperId,limit);
+        log.info("考试排行榜，{}", rank);
+        return Result.success(rank);
     }
 
 }
