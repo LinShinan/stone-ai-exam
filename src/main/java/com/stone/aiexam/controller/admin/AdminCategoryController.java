@@ -1,5 +1,4 @@
-package com.stone.aiexam.controller;
-
+package com.stone.aiexam.controller.admin;
 
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.entity.Category;
@@ -10,44 +9,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
 
-
-@CrossOrigin
-@Tag(name = "题目分类管理")
+@Tag(name="管理端-题目分类")
 @Slf4j
+@CrossOrigin
 @RestController
-@RequestMapping("/api/categories")
-public class CategoryController {
-
+@RequestMapping("/api/admin/categories")
+public class AdminCategoryController {
 
     @Autowired
     private CategoryService categoryService;
-
-    /**
-     * 获取题目分类和对应题目数量
-     * @return
-     */
-    @Operation(summary="获取题目分类和对应题目数量")
-    @GetMapping
-    public Result<List<Category>> getCategoryList(){
-        List<Category> list = categoryService.getCategoryList();
-        log.info("getCategoryList: {}", list);
-        return Result.success(list);
-    }
-
-    /**
-     * 获取题目分类树结构
-     * @return
-     */
-    @Operation(summary="获取题目分类树结构")
-    @GetMapping("/tree")
-    public Result<List<Category>> getCategoryTreeList(){
-        List<Category> list = categoryService.getCategoryTreeList();
-        log.info("getCategoryTreeList: {}", list);
-        return Result.success(list);
-    }
-
     /**
      * 新增题目分类
      * @param category
@@ -87,6 +58,4 @@ public class CategoryController {
         log.info("删除id={}的分类", id);
         return Result.success();
     }
-
-
 }

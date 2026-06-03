@@ -29,11 +29,45 @@ public class Knife4jConfig {
                                 .url("https://www.apache.org/licenses/LICENSE-2.0.html")));
     }
 
+//    @Bean
+//    public GroupedOpenApi publicApi() {
+//        return GroupedOpenApi.builder()
+//                .group("stone-ai-exam")
+//                .pathsToMatch("/**")
+//                .build();
+//    }
+
+
     @Bean
-    public GroupedOpenApi publicApi() {
+    public GroupedOpenApi commonApi() {
         return GroupedOpenApi.builder()
-                .group("stone-ai-exam")
-                .pathsToMatch("/**")
+                .group("公共端")                              // ← 下拉框显示的名字
+                .pathsToMatch("/api/common/**")               // ← 匹配这个路径的
                 .build();
     }
+
+    @Bean
+    public GroupedOpenApi studentApi() {
+        return GroupedOpenApi.builder()
+                .group("用户端")
+                .pathsToMatch("/api/student/**")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi adminApi() {
+        return GroupedOpenApi.builder()
+                .group("管理端")
+                .pathsToMatch("/api/admin/**")
+                .build();
+    }
+
+    @Bean
+    public GroupedOpenApi authApi() {
+        return GroupedOpenApi.builder()
+                .group("认证")
+                .pathsToMatch("/api/auth/**")
+                .build();
+    }
+
 }

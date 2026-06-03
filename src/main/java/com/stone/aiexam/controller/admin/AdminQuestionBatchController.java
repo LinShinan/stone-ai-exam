@@ -1,4 +1,4 @@
-package com.stone.aiexam.controller;
+package com.stone.aiexam.controller.admin;
 
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.dto.AiGenerateRequestDTO;
@@ -19,12 +19,12 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 
-@CrossOrigin
 @Slf4j
-@Tag(name="题目批量处理")
+@CrossOrigin
 @RestController
-@RequestMapping("/api/questions/batch")
-public class QuestionBatchController {
+@Tag(name = "管理端-题目批量")
+@RequestMapping("/api/admin/questions/batch")
+public class AdminQuestionBatchController {
 
     @Autowired
     private QuestionService questionService;
@@ -32,57 +32,35 @@ public class QuestionBatchController {
     @Autowired
     private AiService aiService;
 
-    /**
-     * 下载题目导入模板
-     * @return
-     */
-    @Operation(summary="下载题目导入模板")
+    @Operation(summary = "下载导入模板")
     @GetMapping("/template")
-    public ResponseEntity<byte[]> downloadTemplate(){
-        byte[] questionTemplate = ExcelUtil.createQuestionTemplate();
-
-        ResponseEntity<byte[]> response = ResponseEntity.ok()
+    public ResponseEntity<byte[]> downloadTemplate() {
+        byte[] template = ExcelUtil.createQuestionTemplate();
+        return ResponseEntity.ok()
                 .header("content-disposition", "attachment;filename=template.xlsx")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(questionTemplate);
-
-        return response;
+                .body(template);
     }
 
-    /**
-     * 预览Excel文件
-     * @param file
-     * @return
-     */
-    @Operation(summary="预览Excel文件")
+    @Operation(summary = "预览Excel")
     @PostMapping("/preview-excel")
     public Result<List<QuestionImportDTO>> previewExcel(MultipartFile file) throws IOException {
-        List<QuestionImportDTO> questionImportDTOs =questionService.previewExcel(file);
-        log.info("questionImportDTOs: {}", questionImportDTOs);
-        return Result.success(questionImportDTOs);
+        List<QuestionImportDTO> list = questionService.previewExcel(file);
+        log.info("questionImportDTOs: {}", list);
+        return Result.success(list);
     }
 
-    /**
-     * 批量导入题目
-     * @param questionImportDTOs
-     * @return
-     */
-    @Operation(summary="批量导入题目")
-    @PostMapping("/import-questions")
-    public Result<String> importQuestionBatch(@RequestBody List<QuestionImportDTO> questionImportDTOs){
-        String result = questionService.importQuestionBatch(questionImportDTOs);
+    @Operation(summary = "批量导入")
+    @PostMapping("/import")
+    public Result<String> importBatch(@RequestBody List<QuestionImportDTO> list) {
+        String result = questionService.importQuestionBatch(list);
         log.info("result: {}", result);
         return Result.success(result, "批量导入完成");
     }
 
-    /**
-     * AI生成题目
-     * @param request
-     * @return
-     */
-    @Operation(summary="AI生成题目")
+    @Operation(summary = "AI生成题目")
     @PostMapping("/ai-generate")
-    public Result<List<QuestionImportDTO>> aiGenerate(@RequestBody @Validated AiGenerateRequestDTO request){
+    public Result<List<QuestionImportDTO>> aiGenerate(@RequestBody @Validated AiGenerateRequestDTO request) {
         List<QuestionImportDTO> questions = aiService.aiGenerateQuestions(request);
         log.info("ai生成题目...");
         return Result.success(questions);

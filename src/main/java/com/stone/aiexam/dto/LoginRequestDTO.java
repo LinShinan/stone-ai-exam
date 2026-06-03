@@ -1,15 +1,15 @@
-package com.stone.aiexam.vo;
+package com.stone.aiexam.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 
 /**
- * 登录请求Vo - 用户登录时提交的参数
+ * 登录请求DTO- 用户登录时提交的参数
  */
 @Data
 @Schema(description = "用户登录请求参数")
-public class LoginRequestVO {
+public class LoginRequestDTO {
     
     @Schema(description = "用户名", 
             example = "admin", 

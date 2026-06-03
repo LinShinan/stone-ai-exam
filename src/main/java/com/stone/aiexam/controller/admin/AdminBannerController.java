@@ -1,7 +1,8 @@
-package com.stone.aiexam.controller;
+package com.stone.aiexam.controller.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.stone.aiexam.common.Result;
 import com.stone.aiexam.entity.Banner;
 import com.stone.aiexam.service.BannerService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,17 +10,16 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import com.stone.aiexam.common.Result;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
-@CrossOrigin // 允许跨域
-@Tag(name = "轮播图管理")
+@Tag(name = "管理端-轮播图")
+@CrossOrigin
 @Slf4j
 @RestController
-@RequestMapping("/api/banners")
-public class BannerController {
+@RequestMapping("/api/admin/banners")
+public class AdminBannerController {
 
     @Autowired
     private BannerService bannerService;
@@ -37,23 +37,6 @@ public class BannerController {
 
         List<Banner> bannerList = bannerService.list(queryWrapper);
         log.info("所有轮播图: {}", bannerList);
-        return Result.success(bannerList);
-    }
-
-
-    /**
-     * 获取前台（激活的）轮播图列表
-     * @return
-     */
-    @Operation(summary = "获取激活轮播图列表")
-    @GetMapping("/active")
-    public Result<List<Banner>> getActiveBannerList(){
-        LambdaQueryWrapper<Banner> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.orderByAsc(Banner::getSortOrder);
-        queryWrapper.eq(Banner::getIsActive,true);
-
-        List<Banner> bannerList = bannerService.list(queryWrapper);
-        log.info("激活的轮播图: {}", bannerList);
         return Result.success(bannerList);
     }
 
@@ -140,5 +123,4 @@ public class BannerController {
         log.info("id={}的轮播图更新成功", banner.getId());
         return Result.success();
     }
-
 }
