@@ -21,17 +21,6 @@ public class AdminQuestionController {
     @Autowired
     private QuestionService questionService;
 
-    @Operation(summary = "题目列表")
-    @GetMapping("/list")
-    public Result<Page<Question>> list(
-            @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "10") int size,
-            QuestionQueryDTO queryDTO) {
-        Page<Question> questionPage = new Page<>(page, size);
-        questionService.pageQueryQuestionList(questionPage, queryDTO);
-        log.info("全部数据有{}条, 当前页: {}/{}", questionPage.getTotal(), questionPage.getCurrent(), questionPage.getSize());
-        return Result.success(questionPage);
-    }
 
     @Operation(summary = "新增题目")
     @PostMapping

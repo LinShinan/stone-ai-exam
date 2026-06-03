@@ -1,6 +1,7 @@
 package com.stone.aiexam.config;
 
 import com.stone.aiexam.filter.AdminFilter;
+import com.stone.aiexam.filter.StudentFilter;
 import com.stone.aiexam.utils.JwtUtil;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -17,5 +18,15 @@ public class FilterConfig {
         bean.setOrder(1);
         return bean;
     }
+
+    @Bean
+    public FilterRegistrationBean<StudentFilter> studentFilter(JwtUtil jwtUtil) {
+        FilterRegistrationBean<StudentFilter> bean = new FilterRegistrationBean<>();
+        bean.setFilter(new StudentFilter(jwtUtil));
+        bean.addUrlPatterns("/*");
+        bean.setOrder(2);
+        return bean;
+    }
+
 
 }

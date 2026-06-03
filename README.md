@@ -14,6 +14,7 @@
 ![Aliyun OSS](https://img.shields.io/badge/Aliyun%20OSS-3.17.4-blue?style=flat-square)
 ![Apache POI](https://img.shields.io/badge/Apache%20POI-5.4.1-blue?style=flat-square)
 ![Redis](https://img.shields.io/badge/Redis-7.0+-red?style=flat-square)
+![JWT](https://img.shields.io/badge/JJWT-0.12.6-blue?style=flat-square)
 
 **状态**: 🚧 开发中
 
@@ -61,6 +62,8 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 - ✅ AI 题目生成（Spring AI 集成 + 结构化提示词 + 多题型支持）
 - ✅ 批量导入题目（Excel 模板下载 + 预览 + 批量导入）
 - ✅ AI 简答题批阅（语义分析 + 分级评分 + 反馈与扣分依据）
+- ✅ JWT 管理员认证（登录 → 签发 Token → Filter 拦截 /api/admin/*）
+- ✅ API 三层分层（公共端 /api/common | 用户端 /api/student | 管理端 /api/admin）
 
 ## 📦 快速开始
 
@@ -112,6 +115,34 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 
 `RedisTemplate<String, Object>` 自定义配置：Key 用 `StringRedisSerializer` 保证可读，Value 用 `GenericJackson2JsonRedisSerializer` 支持任意对象 JSON 序列化，存进去的对象带 `@class` 类型信息，拿出来直接强转。
 
+### API 三层分层
+
+本项目按角色将 API 分为三层，URL 前缀区分：
+
+| 端 | 前缀 | 认证 | 说明 |
+|---|---|---|---|
+| 公共端 | `/api/common/**` | 无需登录 | 轮播图、公告、热门题目、排行榜等 |
+| 用户端 | `/api/student/**` | 无需登录（预留） | 学生考试 |
+| 管理端 | `/api/admin/**` | 管理员 Token | 所有增删改操作 |
+| 认证 | `/api/auth/**` | 无需登录 | 登录接口 |
+
+Knife4j 文档右上角下拉框可按端切换，只看对应分组的接口。
+
+### JWT 认证
+
+**流程**：`POST /api/auth/login` 验证用户名密码 → `JwtUtil.generateToken()` 签发 Token → 前端存 Token 并在请求头 `token` 中传输 → `AdminFilter` 拦截 `/api/admin/*` 校验 Token 及角色。
+
+**关键文件**：
+
+| 文件 | 职责 |
+|---|---|
+| `JwtProperties` | `@ConfigurationProperties(prefix="jwt")` 管理密钥和过期时间，`@Validated` 启动校验 |
+| `JwtUtil` | 基于 jjwt 0.12 实现 Token 签发、解析、校验 |
+| `AdminFilter` | 只拦截 `/api/admin/*`，无 Token → 401，角色非 ADMIN → 403 |
+| `FilterConfig` | 注册 AdminFilter 到 Filter 链 |
+
+**Token 载荷**：`{ sub: userId, username, role, iat, exp }`，不含密码等敏感信息。
+
 ---
 
 ## 📁 文件存储模块
@@ -137,14 +168,17 @@ X-File-Storage 是国内 Spring 生态下较成熟的文件存储框架，支持
 ### 接口
 
 ```
-GET    /api/banners/list       全部轮播图（后台管理用）
-GET    /api/banners/active     已启用的轮播图（前台展示用）
-GET    /api/banners/{id}       详情
-POST   /api/banners/add        新增
-PUT    /api/banners/update     更新
-PUT    /api/banners/switch/{id} 启用/禁用
-DELETE /api/banners/delete/{id} 删除
-POST   /api/banners/upload-image  上传图片（独立接口，先上传拿到URL再提交表单）
+公共端 /api/common/banners
+GET    /active                    已启用的轮播图（前台展示用）
+
+管理端 /api/admin/banners
+GET    /list                      全部轮播图（后台管理用）
+GET    /{id}                      详情
+POST   /add                       新增
+PUT    /update                    更新
+PUT    /switch/{id}               启用/禁用
+DELETE /delete/{id}               删除
+POST   /upload-image              上传图片（先上传拿到 URL 再提交表单）
 ```
 
 ### 实现要点
@@ -162,14 +196,17 @@ POST   /api/banners/upload-image  上传图片（独立接口，先上传拿到U
 ### 接口
 
 ```
-GET    /api/notices/list       全部公告（后台管理用）
-GET    /api/notices/active     所有已启用公告（按优先级+时间排序）
-GET    /api/notices/latest     最新 N 条已启用公告
-GET    /api/notices/{id}       详情
-POST   /api/notices/add        新增
-PUT    /api/notices/update     更新
-PUT    /api/notices/switch/{id} 启用/禁用
-DELETE /api/notices/delete/{id} 删除
+公共端 /api/common/notices
+GET    /latest                    最新 N 条已启用公告
+GET    /active                    所有已启用公告（按优先级+时间排序）
+GET    /{id}                      详情
+
+管理端 /api/admin/notices
+GET    /list                      全部公告（后台管理用）
+POST   /add                       新增
+PUT    /update                    更新
+PUT    /switch/{id}               启用/禁用
+DELETE /delete/{id}               删除
 ```
 
 ### 实现要点
@@ -187,11 +224,14 @@ DELETE /api/notices/delete/{id} 删除
 ### 接口
 
 ```
-GET    /api/categories          平级列表（每个分类带题目数量）
-GET    /api/categories/tree     树形结构（父分类含子分类，数量汇总）
-POST   /api/categories          新增
-PUT    /api/categories          更新
-DELETE /api/categories/{id}     删除
+公共端 /api/common/categories
+GET                              平级列表（每个分类带题目数量）
+GET    /tree                     树形结构（父分类含子分类，数量汇总）
+
+管理端 /api/admin/categories
+POST                             新增
+PUT                              更新
+DELETE /{id}                     删除
 ```
 
 ### 数据模型
@@ -266,12 +306,21 @@ Question (主表)          QuestionAnswer (答案表 1:1)    QuestionChoice (选
 ### 接口
 
 ```
-GET    /api/questions/list       分页 + 多条件（分类/难度/类型/关键词搜索）
-GET    /api/questions/{id}       题目详情（三表信息完整返回）
-POST   /api/questions            新增（三表联插，选择题自动生成答案）
-PUT    /api/questions/{id}       更新（选择题先删选项再插，属全量替换）
-DELETE /api/questions/{id}       删除（试卷引用校验 → 三表级联逻辑删除）
-GET    /api/questions/popular    热门题目（Redis ZSet 排行，不足补最新）
+公共端 /api/common/questions
+GET    /list                      分页 + 多条件（分类/难度/类型/关键词搜索）
+GET    /popular                   热门题目（Redis ZSet 排行，不足补最新）
+GET    /{id}                      题目详情（三表信息完整返回）
+
+管理端 /api/admin/questions
+POST                              新增（三表联插，选择题自动生成答案）
+PUT    /{id}                      更新（选择题先删选项再插，属全量替换）
+DELETE /{id}                      删除（试卷引用校验 → 三表级联逻辑删除）
+
+管理端 /api/admin/questions/batch
+GET    /batch/template            下载 Excel 导入模板
+POST   /batch/preview-excel       预览 Excel 文件内容
+POST   /batch/import              确认并批量导入
+POST   /batch/ai-generate         AI 生成题目
 ```
 
 ### 关键技术实现
@@ -370,13 +419,18 @@ paper 表                          paper_question 关联表
 ### 接口
 
 ```
-GET    /api/papers/list          试卷列表（支持按名称/状态筛选）
-GET    /api/papers/{id}          试卷详情（含题目列表 + 答案 + 选项）
-POST   /api/papers               手动创建试卷（传入题目ID和分值映射）
-POST   /api/papers/smart         智能组卷（传入规则自动选题）
-PUT    /api/papers/{id}          更新试卷（先删关联再重建）
-PATCH  /api/papers/{id}/status   更新试卷状态（DRAFT → PUBLISHED → STOPPED）
-DELETE /api/papers/{id}          删除试卷（校验发布状态和考试引用）
+公共端 /api/common/papers
+GET    /list                      已发布试卷列表（前台选卷用）
+GET    /{id}                      试卷详情（含题目列表 + 答案 + 选项）
+
+管理端 /api/admin/papers
+GET    /list                      试卷列表（全部状态，支持按名称/状态筛选）
+GET    /{id}                      试卷详情
+POST                              手动创建试卷（传入题目ID和分值映射）
+POST   /smart                     智能组卷（传入规则自动选题）
+PUT    /{id}                      更新试卷（先删关联再重建）
+PATCH  /{id}/status               更新试卷状态（DRAFT → PUBLISHED → STOPPED）
+DELETE /{id}                      删除试卷（校验发布状态和考试引用）
 ```
 
 ### 手动组卷流程
@@ -445,10 +499,18 @@ exam_records 表                    answer_record 表
 ### 接口
 
 ```
-POST   /api/exams/start                开始考试
-GET    /api/exams/{id}                 获取考试记录详情（含试卷 + 作答记录）
-POST   /api/exams/{examRecordId}/submit  提交试卷（自动触发批阅）
-POST   /api/exams/{examRecordId}/grade   AI 自动批阅（独立调用，用于重新批阅）
+公共端 /api/common/exams
+GET    /ranking                    考试排行榜
+
+用户端 /api/student/exams
+POST   /start                      开始考试
+GET    /{id}                       获取考试记录详情（含试卷 + 作答记录）
+POST   /{examRecordId}/submit      提交试卷（自动触发批阅）
+
+管理端 /api/admin/exams
+GET    /list                       考试记录分页列表
+POST   /{examRecordId}/grade       AI 自动批阅（独立调用，用于重新批阅）
+DELETE /{id}                       删除考试记录
 ```
 
 ### 开始考试
@@ -584,10 +646,7 @@ AiQuestionResponse { questions: List<QuestionImportDTO> }
 ### 接口
 
 ```
-GET    /api/questions/batch/template        下载 Excel 导入模板
-POST   /api/questions/batch/preview-excel   预览 Excel 文件内容
-POST   /api/questions/batch/import-questions 确认并批量导入
-POST   /api/questions/batch/ai-generate     AI 生成题目
+已合并到管理端 /api/admin/questions/batch 下，见题库管理章节。
 ```
 
 ### Excel 批量导入流程
@@ -623,16 +682,29 @@ stone-ai-exam
     │   └── StoneConstant.java       # 常量（状态/类型/Redis Key）
     ├── config/
     │   ├── RedisConfig.java         # Redis 序列化配置
-    │   ├── Knife4jConfig.java       # API 文档配置
-    │   └── MybatisPlusConfig.java   # MyBatis-Plus 配置
+    │   ├── Knife4jConfig.java       # API 文档 + 分组
+    │   ├── MybatisPlusConfig.java   # MyBatis-Plus 配置
+    │   ├── JwtProperties.java       # JWT 密钥与过期时间
+    │   └── FilterConfig.java        # 注册 AdminFilter
     ├── controller/
-    │   ├── BannerController.java    # 轮播图管理
-    │   ├── NoticeController.java    # 公告管理
-    │   ├── CategoryController.java  # 题目分类管理
-    │   ├── QuestionController.java  # 题库管理
-    │   ├── QuestionBatchController.java  # 题目批量处理 + AI生成
-    │   ├── PaperController.java     # 试卷管理
-    │   └── ExamController.java      # 考试管理
+    │   ├── AuthController.java      # 登录
+    │   ├── common/                   # /api/common/**
+    │   │   ├── CommonBannerController.java
+    │   │   ├── CommonNoticeController.java
+    │   │   ├── CommonQuestionController.java
+    │   │   ├── CommonCategoryController.java
+    │   │   ├── CommonPaperController.java
+    │   │   └── CommonExamController.java
+    │   ├── student/                  # /api/student/**
+    │   │   └── StudentExamController.java
+    │   └── admin/                    # /api/admin/** — Filter 拦截
+    │       ├── AdminBannerController.java
+    │       ├── AdminNoticeController.java
+    │       ├── AdminQuestionController.java
+    │       ├── AdminQuestionBatchController.java
+    │       ├── AdminPaperController.java
+    │       ├── AdminCategoryController.java
+    │       └── AdminExamController.java
     ├── dto/
     │   ├── AiGenerateRequestDTO.java # AI生成题目请求
     │   ├── AiGradingResult.java      # AI批阅结果
@@ -658,6 +730,8 @@ stone-ai-exam
     │   ├── QuestionChoice.java      # 选项表
     │   ├── QuestionType.java        # 题目类型枚举
     │   └── User.java                # 用户表
+    ├── filter/
+    │   └── AdminFilter.java         # 管理端 JWT 校验
     ├── exception/
     │   ├── BusinessException.java   # 业务异常
     │   └── GlobalExceptionHandler.java
@@ -671,6 +745,7 @@ stone-ai-exam
     │   ├── PaperQuestionMapper.java
     │   ├── QuestionAnswerMapper.java
     │   ├── QuestionChoiceMapper.java
+    │   ├── UserMapper.java
     │   └── QuestionMapper.java
     ├── service/
     │   ├── impl/
@@ -683,6 +758,7 @@ stone-ai-exam
     │   │   ├── PaperQuestionServiceImpl.java
     │   │   ├── PaperServiceImpl.java   # 核心：组卷逻辑
     │   │   └── QuestionServiceImpl.java
+    │   ├── UserService.java
     │   ├── AiService.java              # AI 服务（题目生成/批阅/总结）
     │   ├── AnswerRecordService.java
     │   ├── BannerService.java
@@ -694,16 +770,20 @@ stone-ai-exam
     │   ├── PaperService.java
     │   └── QuestionService.java
     ├── utils/
-    │   └── ExcelUtil.java          # Excel 模板生成工具
+    │   ├── ExcelUtil.java          # Excel 模板生成工具
+    │   └── JwtUtil.java            # JWT 签发/解析/校验
     └── vo/
         ├── ChatChoice.java         # AI 聊天响应结构
         ├── ChatMessage.java
         ├── ChatRequest.java
         ├── ChatResponse.java
         ├── ExamRankingVO.java
-        ├── LoginRequestVO.java
-        ├── LoginResponseVO.java
-        ├── PageResult.java
+        ├── LoginRequestDTO.java
+        ├── LoginRequestDTO.java
+    │   ├── LoginResponseVO.java
+        ├── LoginRequestDTO.java
+    │   ├── LoginResponseVO.java
+    │   ├── PageResult.java
         ├── ResponseMessage.java
         ├── StatsVO.java
         └── Usage.java
@@ -714,7 +794,7 @@ stone-ai-exam
 ## 🗃️ 数据库核心表关系
 
 ```
-users                    ── 用户表（规划中）
+users                    ── 用户表
 paper                   ── 试卷表
 paper_question          ── 试卷-题目关联表（N:N，带分值）
 questions               ── 题目主表
