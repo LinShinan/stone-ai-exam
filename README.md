@@ -19,6 +19,15 @@
 
 </div>
 
+<div align="center">
+
+| 🔗 后端（本项目） |                              🖥️ 前端                               |
+|:---:|:-----------------------------------------------------------------:|
+| [stone-ai-exam](https://github.com/LinShinan/stone-ai-exam) | [stone-aiexam-web](https://github.com/LinShinan/stone-aiexam-web) |
+| Spring Boot 3.5 后端服务 |                             Vue 前端界面                              |
+
+</div>
+
 ---
 
 ## 📖 项目简介
