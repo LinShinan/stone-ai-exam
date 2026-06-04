@@ -15,8 +15,7 @@
 ![Apache POI](https://img.shields.io/badge/Apache%20POI-5.4.1-blue?style=flat-square)
 ![Redis](https://img.shields.io/badge/Redis-7.0+-red?style=flat-square)
 ![JWT](https://img.shields.io/badge/JJWT-0.12.6-blue?style=flat-square)
-
-**状态**: 🚧 开发中
+![BCrypt](https://img.shields.io/badge/BCrypt-12-green?style=flat-square)
 
 </div>
 
@@ -25,8 +24,6 @@
 ## 📖 项目简介
 
 Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在线考试系统。系统致力于通过 AI 能力实现智能组卷、自动阅卷、学习分析等核心功能，为教育机构和企业培训提供高效、智能的考试解决方案。
-
-> ⚠️ 本项目仍在积极开发中，功能持续完善中...
 
 ## 🛠️ 技术栈
 
@@ -62,7 +59,11 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 - ✅ AI 题目生成（Spring AI 集成 + 结构化提示词 + 多题型支持）
 - ✅ 批量导入题目（Excel 模板下载 + 预览 + 批量导入）
 - ✅ AI 简答题批阅（语义分析 + 分级评分 + 反馈与扣分依据）
-- ✅ JWT 管理员认证（登录 → 签发 Token → Filter 拦截 /api/admin/*）
+- ✅ JWT 双角色认证（AdminFilter / StudentFilter 按前缀拦截，Token 单次解析注入请求上下文）
+- ✅ BCrypt 密码加密（cost=12，仅引入 spring-security-crypto，不加载完整 Spring Security）
+- ✅ 学生注册登录 + 个人中心（查看信息 + 修改密码）
+- ✅ 简答题 AI 并行批阅（CompletableFuture + 自定义线程池，N 道题耗时从 N×3s 降至 ~3s）
+- ✅ AI 服务降级（声明式重试 3 次 + 指数退避 2s/4s/8s，异常时兜底不中断流程）
 - ✅ API 三层分层（公共端 /api/common | 用户端 /api/student | 管理端 /api/admin）
 
 ## 📦 快速开始
@@ -122,26 +123,38 @@ Stone AI Exam 是一款基于 Spring Boot 3.5 和 AI 技术打造的现代化在
 | 端 | 前缀 | 认证 | 说明 |
 |---|---|---|---|
 | 公共端 | `/api/common/**` | 无需登录 | 轮播图、公告、热门题目、排行榜等 |
-| 用户端 | `/api/student/**` | 无需登录（预留） | 学生考试 |
+| 用户端 | `/api/student/**` | 学生 Token | 考试、个人中心 |
 | 管理端 | `/api/admin/**` | 管理员 Token | 所有增删改操作 |
 | 认证 | `/api/auth/**` | 无需登录 | 登录接口 |
 
 Knife4j 文档右上角下拉框可按端切换，只看对应分组的接口。
 
-### JWT 认证
+### JWT 认证 + BCrypt 密码加密
 
-**流程**：`POST /api/auth/login` 验证用户名密码 → `JwtUtil.generateToken()` 签发 Token → 前端存 Token 并在请求头 `token` 中传输 → `AdminFilter` 拦截 `/api/admin/*` 校验 Token 及角色。
+**登录流程**：`POST /api/auth/login` 验证用户名 + BCrypt 哈希密码 → `JwtUtil.generateToken()` 签发 Token → 前端存 Token 在请求头 `token` 中传输。
+
+**双 Filter 架构**：
+
+| Filter | 拦截路径 | 校验逻辑 |
+|---|---|---|
+| `AdminFilter` | `/api/admin/*` | 验证 Token → 校验 role=ADMIN → 放行 |
+| `StudentFilter` | `/api/student/*` | 验证 Token → 校验 role=STUDENT → 注入 `request.setAttribute("username", ...)` → 放行 |
+
+**设计要点**：
+- `StudentFilter` 将 username 注入 `request` 属性，Controller 层直接取用，无需二次解析 Token
+- 学生端详情接口服务端校验 `username == record.studentName`，防止越权查看他人考试记录
+- BCrypt cost=12（4096 轮），仅引入 `spring-security-crypto`，不加载完整 Spring Security 框架
 
 **关键文件**：
 
 | 文件 | 职责 |
 |---|---|
-| `JwtProperties` | `@ConfigurationProperties(prefix="jwt")` 管理密钥和过期时间，`@Validated` 启动校验 |
+| `PasswordEncoderConfig` | BCryptPasswordEncoder Bean（cost=12） |
+| `JwtProperties` | `@ConfigurationProperties(prefix="jwt")` 管理密钥和过期时间 |
 | `JwtUtil` | 基于 jjwt 0.12 实现 Token 签发、解析、校验 |
-| `AdminFilter` | 只拦截 `/api/admin/*`，无 Token → 401，角色非 ADMIN → 403 |
-| `FilterConfig` | 注册 AdminFilter 到 Filter 链 |
-
-**Token 载荷**：`{ sub: userId, username, role, iat, exp }`，不含密码等敏感信息。
+| `AdminFilter` | 拦截 `/api/admin/*`，无 Token → 401，角色非 ADMIN → 403 |
+| `StudentFilter` | 拦截 `/api/student/*`，无 Token → 401，角色非 STUDENT → 403，注入 username |
+| `FilterConfig` | 注册双 Filter 到 Filter 链，AdminFilter order=1，StudentFilter order=2 |
 
 ---
 
@@ -551,6 +564,44 @@ Body: [{ questionId: 1, userAnswer: "A" }, { questionId: 2, userAnswer: "true" }
 
 批阅完成后调用 AI 生成考试总结，根据得分率给出个性化学习建议。
 
+### AI 并行批阅优化
+
+简答题 AI 批阅是最大性能瓶颈（每次 HTTP 调用 2~5 秒）。将串行改为 `CompletableFuture` 并行后，N 道题耗时从 N×3s 降至 ~3s。
+
+**架构**：
+
+```
+                                 ┌── 简答1 → AI API → ~3s
+选择/判断 → 本地比对（瞬间）         ├── 简答2 → AI API → ~3s
+                                 ├── 简答3 → AI API → ~3s
+                                 ├── 简答4 → AI API → ~3s
+                                 └── 简答5 → AI API → ~3s
+                                          ↑
+                        CompletableFuture.runAsync() 同时发出
+                                          ↓
+                        CompletableFuture.allOf().join() 等全部返回
+```
+
+**关键设计**：
+
+| 决策点 | 做法 | 原因 |
+|--------|------|------|
+| 线程池 | 独立 `aiGradingExecutor`（core=4/max=8/queue=100） | 隔离 AI 调用，不挤占 Tomcat 线程 |
+| 并行范围 | 只对简答题并行，选择/判断本地比对 | 无网络 I/O 的题不需要线程开销 |
+| 累分时机 | `allOf().join()` 之后统一算总分 | 并行任务返回前 score 还是 0 |
+| 异常容错 | 单个简答题异常不中断其他批阅 | 每道题独立 catch，失败那道记 0 分 |
+
+**配置类**：`AsyncConfig`（ThreadPoolTaskExecutor Bean），`ExamServiceImpl` 注入 `Executor aiGradingExecutor`。
+
+### 学生个人中心
+
+| 接口 | 说明 |
+|------|------|
+| `GET /api/student/user/profile` | 获取个人信息（不含密码） |
+| `PUT /api/student/user/password` | 修改密码（验证旧密码 → BCrypt 加密新密码） |
+
+**安全校验**：修改密码需验证旧密码正确 + 新旧密码不能相同 + 新密码 ≥ 6 位。
+
 ### 考试记录详情查询
 
 `GET /api/exams/{id}` 返回的 `ExamRecord` 包含：
@@ -623,7 +674,7 @@ AiQuestionResponse { questions: List<QuestionImportDTO> }
 输出格式：JSON { score: int, feedback: str, reason: str }
 ```
 
-**容错**：AI 调用失败时返回 `score=0, feedback="AI批改异常，请联系教师"`，确保核心流程不中断。
+**容错**：AI 调用失败时返回 `score=0, feedback="AI批改异常，请联系教师"`，确保核心流程不中断。Spring AI 配置声明式重试（3 次 + 指数退避 2s/4s/8s），零代码实现服务降级。
 
 ### 3. AI 生成考试总结
 
@@ -685,7 +736,9 @@ stone-ai-exam
     │   ├── Knife4jConfig.java       # API 文档 + 分组
     │   ├── MybatisPlusConfig.java   # MyBatis-Plus 配置
     │   ├── JwtProperties.java       # JWT 密钥与过期时间
-    │   └── FilterConfig.java        # 注册 AdminFilter
+    │   ├── PasswordEncoderConfig.java # BCrypt 密码编码器
+    │   ├── AsyncConfig.java         # AI 批阅线程池
+    │   └── FilterConfig.java        # 注册双 Filter
     ├── controller/
     │   ├── AuthController.java      # 登录
     │   ├── common/                   # /api/common/**
@@ -695,8 +748,9 @@ stone-ai-exam
     │   │   ├── CommonCategoryController.java
     │   │   ├── CommonPaperController.java
     │   │   └── CommonExamController.java
-    │   ├── student/                  # /api/student/**
-    │   │   └── StudentExamController.java
+    │   ├── student/                  # /api/student/** — StudentFilter 拦截
+    │   │   ├── StudentExamController.java
+    │   │   └── StudentUserController.java  # 个人中心（查看信息 + 修改密码）
     │   └── admin/                    # /api/admin/** — Filter 拦截
     │       ├── AdminBannerController.java
     │       ├── AdminNoticeController.java
@@ -709,13 +763,16 @@ stone-ai-exam
     │   ├── AiGenerateRequestDTO.java # AI生成题目请求
     │   ├── AiGradingResult.java      # AI批阅结果
     │   ├── AiQuestionResponse.java   # AI生成题目响应
-    │   ├── PaperDTO.java            # 试卷创建/更新
-    │   ├── QuestionImportDTO.java   # Excel导入/AI生成题目
-    │   ├── QuestionQueryDTO.java    # 题目多条件查询
-    │   ├── RuleDTO.java             # 智能组卷规则
-    │   ├── SmartPaperDTO.java       # 智能组卷请求
-    │   ├── StartExamDTO.java        # 开始考试请求
-    │   └── SubmitAnswerDTO.java     # 提交答案请求
+    │   ├── ChangePasswordDTO.java    # 修改密码请求
+    │   ├── LoginRequestDTO.java      # 登录请求
+    │   ├── PaperDTO.java             # 试卷创建/更新
+    │   ├── QuestionImportDTO.java    # Excel导入/AI生成题目
+    │   ├── QuestionQueryDTO.java     # 题目多条件查询
+    │   ├── RegisterDTO.java          # 注册请求
+    │   ├── RuleDTO.java              # 智能组卷规则
+    │   ├── SmartPaperDTO.java        # 智能组卷请求
+    │   ├── StartExamDTO.java         # 开始考试请求
+    │   └── SubmitAnswerDTO.java      # 提交答案请求
     ├── entity/
     │   ├── BaseEntity.java          # 基类（id/时间/逻辑删除）
     │   ├── AnswerRecord.java        # 答题记录表
@@ -731,7 +788,8 @@ stone-ai-exam
     │   ├── QuestionType.java        # 题目类型枚举
     │   └── User.java                # 用户表
     ├── filter/
-    │   └── AdminFilter.java         # 管理端 JWT 校验
+    │   ├── AdminFilter.java         # 管理端 JWT 校验
+    │   └── StudentFilter.java       # 学生端 JWT 校验 + 注入 username
     ├── exception/
     │   ├── BusinessException.java   # 业务异常
     │   └── GlobalExceptionHandler.java
@@ -757,7 +815,8 @@ stone-ai-exam
     │   │   ├── NoticeServiceImpl.java
     │   │   ├── PaperQuestionServiceImpl.java
     │   │   ├── PaperServiceImpl.java   # 核心：组卷逻辑
-    │   │   └── QuestionServiceImpl.java
+    │   │   ├── QuestionServiceImpl.java
+    │   │   └── UserServiceImpl.java         # 用户（登录/注册/改密）
     │   ├── UserService.java
     │   ├── AiService.java              # AI 服务（题目生成/批阅/总结）
     │   ├── AnswerRecordService.java
@@ -773,20 +832,10 @@ stone-ai-exam
     │   ├── ExcelUtil.java          # Excel 模板生成工具
     │   └── JwtUtil.java            # JWT 签发/解析/校验
     └── vo/
-        ├── ChatChoice.java         # AI 聊天响应结构
-        ├── ChatMessage.java
-        ├── ChatRequest.java
-        ├── ChatResponse.java
-        ├── ExamRankingVO.java
-        ├── LoginRequestDTO.java
-        ├── LoginRequestDTO.java
-    │   ├── LoginResponseVO.java
-        ├── LoginRequestDTO.java
-    │   ├── LoginResponseVO.java
-    │   ├── PageResult.java
-        ├── ResponseMessage.java
-        ├── StatsVO.java
-        └── Usage.java
+        ├── ExamRankingVO.java       # 考试排行榜
+        ├── LoginResponseVO.java     # 登录响应
+        ├── PageResult.java          # 分页结果
+        └── StatsVO.java             # 统计信息
 ```
 
 ---
