@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.stone.aiexam.common.StoneConstant;
-import com.stone.aiexam.dto.StartExamDTO;
 import com.stone.aiexam.dto.SubmitAnswerDTO;
 import com.stone.aiexam.entity.AnswerRecord;
 import com.stone.aiexam.entity.ExamRecord;
@@ -20,7 +19,6 @@ import com.stone.aiexam.service.ExamService;
 import com.stone.aiexam.service.PaperService;
 import com.stone.aiexam.vo.ExamRankingVO;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -50,34 +48,35 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
     private AiService aiService;
 
 
-    /**
-     * 开始考试
-     * @param startExamDTO
-     * @return
-     */
     @Override
-    public ExamRecord startExam(StartExamDTO startExamDTO) {
-        //1. 校验：该考生是否还有在进行中的考试
+    public ExamRecord startExam(Long paperId, String studentName) {
+        // 1. 校验：该考生是否还有在进行中的考试
         LambdaQueryWrapper<ExamRecord> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(ExamRecord::getStudentName,startExamDTO.getStudentName());
-        queryWrapper.eq(ExamRecord::getExamId,startExamDTO.getPaperId());
-        queryWrapper.eq(ExamRecord::getStatus,"进行中");
+        queryWrapper.eq(ExamRecord::getStudentName, studentName);
+        queryWrapper.eq(ExamRecord::getExamId, paperId);
+        queryWrapper.eq(ExamRecord::getStatus, "进行中");
         ExamRecord examRecord = getOne(queryWrapper);
-        if(examRecord!=null){
+        if (examRecord != null) {
             return examRecord;
         }
-        //2. 设置考试信息，并保存考试记录
-        //builder模式
+
+        // 2. 保存考试记录
         examRecord = ExamRecord.builder()
-                .examId(startExamDTO.getPaperId())
-                .studentName(startExamDTO.getStudentName())
+                .examId(paperId.intValue())
+                .studentName(studentName)
                 .startTime(LocalDateTime.now())
                 .status("进行中")
                 .windowSwitches(0)
                 .build();
         save(examRecord);
-        //3. 返回考试记录
         return examRecord;
+    }
+
+    @Override
+    public List<ExamRecord> listByStudentName(String studentName) {
+        return list(new LambdaQueryWrapper<ExamRecord>()
+                .eq(ExamRecord::getStudentName, studentName)
+                .orderByDesc(ExamRecord::getCreateTime));
     }
 
     /**

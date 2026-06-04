@@ -51,6 +51,8 @@ public class StudentFilter implements Filter {
             return;
         }
 
+        request.setAttribute("username", claims.get("username", String.class));
+
         log.info("学生端请求通过: {}", uri);
         filterChain.doFilter(request, response);
     }

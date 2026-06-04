@@ -11,6 +11,7 @@ import com.stone.aiexam.service.UserService;
 import com.stone.aiexam.utils.JwtUtil;
 import com.stone.aiexam.vo.LoginResponseVO;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -19,6 +20,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
 
     /**
      * 管理员登录
@@ -34,8 +38,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new BusinessException("用户名或密码错误");
         }
 
-        // 2. 验密码
-        if (!dto.getPassword().equals(user.getPassword())) {
+        // 2. 验密码（BCrypt 哈希比对）
+        if (!passwordEncoder.matches(dto.getPassword(), user.getPassword())) {
             throw new BusinessException("用户名或密码错误");
         }
 
@@ -81,11 +85,11 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             throw new BusinessException("两次输入的密码不一致");
         }
 
-        // 2. 入库
+        // 2. 入库（密码 BCrypt 加密）
         User user = new User();
         user.setUsername(dto.getUsername());
         user.setRealName(dto.getRealName());
-        user.setPassword(dto.getPassword());
+        user.setPassword(passwordEncoder.encode(dto.getPassword()));
         user.setRole("STUDENT");
         user.setStatus("ACTIVE");
         save(user);

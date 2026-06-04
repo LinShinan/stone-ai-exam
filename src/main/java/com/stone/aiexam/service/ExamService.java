@@ -2,7 +2,6 @@ package com.stone.aiexam.service;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.stone.aiexam.dto.StartExamDTO;
 import com.stone.aiexam.dto.SubmitAnswerDTO;
 import com.stone.aiexam.entity.ExamRecord;
 import com.stone.aiexam.vo.ExamRankingVO;
@@ -13,10 +12,18 @@ import java.util.List;
 public interface ExamService extends IService<ExamRecord> {
     /**
      * 开始考试
-     * @param startExamDTO
+     * @param paperId
+     * @param studentName 从 token 解析的学生用户名
      * @return
      */
-    ExamRecord startExam(StartExamDTO startExamDTO);
+    ExamRecord startExam(Long paperId, String studentName);
+
+    /**
+     * 查询学生的考试记录
+     * @param studentName
+     * @return
+     */
+    List<ExamRecord> listByStudentName(String studentName);
 
     /**
      * 获取考试记录
