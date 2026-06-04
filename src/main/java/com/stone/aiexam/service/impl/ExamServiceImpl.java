@@ -21,6 +21,7 @@ import com.stone.aiexam.vo.ExamRankingVO;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
@@ -29,6 +30,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -46,6 +49,9 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
 
     @Autowired
     private AiService aiService;
+
+    @Autowired
+    private Executor aiGradingExecutor;
 
 
     @Override
@@ -74,9 +80,18 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
 
     @Override
     public List<ExamRecord> listByStudentName(String studentName) {
-        return list(new LambdaQueryWrapper<ExamRecord>()
+        List<ExamRecord> records = list(new LambdaQueryWrapper<ExamRecord>()
                 .eq(ExamRecord::getStudentName, studentName)
                 .orderByDesc(ExamRecord::getCreateTime));
+        // 批量加载试卷信息
+        if (!CollectionUtils.isEmpty(records)) {
+            List<Integer> paperIds = records.stream().map(ExamRecord::getExamId).toList();
+            List<Paper> papers = paperService.listByIds(paperIds);
+            Map<Long, Paper> paperMap = papers.stream()
+                    .collect(Collectors.toMap(Paper::getId, p -> p));
+            records.forEach(r -> r.setPaper(paperMap.get(r.getExamId().longValue())));
+        }
+        return records;
     }
 
     /**
@@ -123,6 +138,7 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
      * @param records
      */
     @Override
+    @Transactional
     public void submitExam(Integer examRecordId, List<SubmitAnswerDTO> records) {
         //1. 保存作答记录
         if(!CollectionUtils.isEmpty(records)){
@@ -174,58 +190,76 @@ public class ExamServiceImpl extends ServiceImpl<ExamRecordMapper, ExamRecord> i
             return examRecord;
         }
         //2. 进行判卷，计算成绩，正确题数，作答记录状态修改
-        int totalScore = 0;
-        int correctCount = 0;
 
         //建立题目id和题目的映射，方便后续直接获取题目信息
         Map<Long, Question> questionMap = paper.getQuestions().stream()
                 .collect(Collectors.toMap(Question::getId, q -> q));
 
-        for(AnswerRecord answerRecord: answerRecords){
-            try{
+        //把简答题先记下来，后面并行处理
+        List<AnswerRecord> textAnswers = new ArrayList<>();
+
+        for (AnswerRecord answerRecord : answerRecords) {
+            try {
                 Question question = questionMap.get(answerRecord.getQuestionId().longValue());
-                String providedAnswer = question.getAnswer().getAnswer();
                 String userAnswer = answerRecord.getUserAnswer();
 
-                if(StoneConstant.QUESTION_TYPE_JUDGE.equals(question.getType())){
+                if (StoneConstant.QUESTION_TYPE_JUDGE.equals(question.getType())) {
                     userAnswer = transJudgeAnswer(userAnswer);
                 }
 
-
-                if(StoneConstant.QUESTION_TYPE_TEXT.equals(question.getType())){
-                    //a.是简答题，ai智能批阅
-                    int maxQScore = question.getPaperScore() != null ? question.getPaperScore().intValue() : 0;
-                    AiGradingResult gr = aiService.gradeTextAnswer(question, userAnswer, maxQScore);
-                    answerRecord.setScore(gr.getScore());
-                    answerRecord.setAiCorrection(gr.getFeedback() + "\n" + gr.getReason());
-                    // 根据得分推算正确性
-                    if (gr.getScore() >= maxQScore) {
-                        answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_TRUE);
-                    } else if (gr.getScore() > 0) {
-                        answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_PARTLY_CORRECT);
-                    } else {
-                        answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_FALSE);
-                    }
-                }else{
-                    //b.选择/判断，程序自动比对
-                    if(providedAnswer.equalsIgnoreCase(userAnswer)){
+                if (StoneConstant.QUESTION_TYPE_TEXT.equals(question.getType())) {
+                    textAnswers.add(answerRecord);
+                } else {
+                    // 选择/判断，程序自动比对
+                    if (question.getAnswer().getAnswer().equalsIgnoreCase(userAnswer)) {
                         answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_TRUE);
                         answerRecord.setScore(question.getPaperScore().intValue());
-                        ;
-                    }else{
+                    } else {
                         answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_FALSE);
                         answerRecord.setScore(0);
                     }
                 }
-            }catch(Exception e){
+            } catch (Exception e) {
                 log.error("批阅题目异常, answerRecordId={}, questionId={}", answerRecord.getId(), answerRecord.getQuestionId(), e);
                 answerRecord.setIsCorrect(StoneConstant.ANSWER_STATUS_FALSE);
                 answerRecord.setScore(0);
                 answerRecord.setAiCorrection("系统判题异常");
             }
-            //c. 累加分数，统计正确题数
-            totalScore += answerRecord.getScore();
-            if(Integer.valueOf(StoneConstant.ANSWER_STATUS_TRUE).equals(answerRecord.getIsCorrect())){
+        }
+
+        // 简答题并行 AI 批阅
+        if (!textAnswers.isEmpty()) {
+            List<CompletableFuture<Void>> tasks = new ArrayList<>();
+
+            for (AnswerRecord ar : textAnswers) {
+                CompletableFuture<Void> task = CompletableFuture.runAsync(() -> {
+                    Question q = questionMap.get(ar.getQuestionId().longValue());
+                    int maxScore = q.getPaperScore() != null
+                            ? q.getPaperScore().intValue() : q.getScore();
+                    AiGradingResult gr = aiService.gradeTextAnswer(q, ar.getUserAnswer(), maxScore);
+                    ar.setScore(gr.getScore());
+                    ar.setAiCorrection(gr.getFeedback() + "\n" + gr.getReason());
+                    if (gr.getScore() >= maxScore) {
+                        ar.setIsCorrect(StoneConstant.ANSWER_STATUS_TRUE);
+                    } else if (gr.getScore() > 0) {
+                        ar.setIsCorrect(StoneConstant.ANSWER_STATUS_PARTLY_CORRECT);
+                    } else {
+                        ar.setIsCorrect(StoneConstant.ANSWER_STATUS_FALSE);
+                    }
+                }, aiGradingExecutor);
+                tasks.add(task);
+            }
+
+            // 等全部完成
+            CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0])).join();
+        }
+
+        // 全部批完，算总分
+        int totalScore = 0;
+        int correctCount = 0;
+        for (AnswerRecord ar : answerRecords) {
+            totalScore += ar.getScore();
+            if (Integer.valueOf(StoneConstant.ANSWER_STATUS_TRUE).equals(ar.getIsCorrect())) {
                 correctCount++;
             }
         }

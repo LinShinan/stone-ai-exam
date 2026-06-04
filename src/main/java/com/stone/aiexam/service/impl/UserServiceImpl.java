@@ -2,6 +2,7 @@ package com.stone.aiexam.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.stone.aiexam.dto.ChangePasswordDTO;
 import com.stone.aiexam.dto.LoginRequestDTO;
 import com.stone.aiexam.dto.RegisterDTO;
 import com.stone.aiexam.entity.User;
@@ -104,5 +105,41 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         vo.setRole("STUDENT");
         vo.setToken(token);
         return vo;
+    }
+
+    @Override
+    public User getUserProfile(String username) {
+        User user = getOne(new LambdaQueryWrapper<User>()
+                .eq(User::getUsername, username));
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        // 不返回密码
+        user.setPassword(null);
+        return user;
+    }
+
+    @Override
+    public void changePassword(String username, ChangePasswordDTO dto) {
+        User user = getOne(new LambdaQueryWrapper<User>()
+                .eq(User::getUsername, username));
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        // 验证旧密码
+        if (!passwordEncoder.matches(dto.getOldPassword(), user.getPassword())) {
+            throw new BusinessException("旧密码错误");
+        }
+        // 新密码不能和旧密码一样
+        if (dto.getOldPassword().equals(dto.getNewPassword())) {
+            throw new BusinessException("新密码不能与旧密码相同");
+        }
+        // 新密码长度校验
+        if (dto.getNewPassword().length() < 6) {
+            throw new BusinessException("新密码长度不能小于6");
+        }
+        // 加密新密码并更新
+        user.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        updateById(user);
     }
 }

@@ -44,6 +44,14 @@ public class AdminExamController {
         return Result.success();
     }
 
+    @Operation(summary = "考试记录详情")
+    @GetMapping("/{id}")
+    public Result<ExamRecord> getById(@PathVariable Long id) {
+        ExamRecord record = examService.getExamRecordById(id);
+        log.info("考试记录详情: {}", record);
+        return Result.success(record);
+    }
+
     @Operation(summary = "删除考试记录")
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
