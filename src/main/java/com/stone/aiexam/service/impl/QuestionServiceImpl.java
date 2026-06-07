@@ -3,6 +3,7 @@ package com.stone.aiexam.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.stone.aiexam.common.RedisConstant;
 import com.stone.aiexam.dto.QuestionImportDTO;
 import com.stone.aiexam.dto.QuestionQueryDTO;
 import com.stone.aiexam.entity.PaperQuestion;
@@ -15,6 +16,7 @@ import com.stone.aiexam.mapper.QuestionAnswerMapper;
 import com.stone.aiexam.mapper.QuestionChoiceMapper;
 import com.stone.aiexam.mapper.QuestionMapper;
 import com.stone.aiexam.service.QuestionService;
+import com.stone.aiexam.utils.CacheClient;
 import com.stone.aiexam.utils.ExcelUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -30,6 +32,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static com.stone.aiexam.common.StoneConstant.HOT_QUESTION_KEY;
@@ -49,6 +52,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
 
     @Autowired
     private PaperQuestionMapper paperQuestionMapper;
+
+    @Autowired
+    private CacheClient cacheClient;
 
 
     /**
@@ -89,6 +95,24 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
      */
     @Override
     public Question getQuestionById(Long id) {
+        Question question =  cacheClient.queryWithNullCache(
+                RedisConstant.QUESTION_DETAIL_KEY, id,
+                Question.class, this::loadQuestionFromDb,
+                RedisConstant.QUESTION_DETAIL_TTL, TimeUnit.MINUTES);
+
+        //通过redis的zset设置题目热度,热度不受缓存影响，每次查看都计
+        if(question!=null){
+            incrementHotScore(question.getId());
+        }
+        return question;
+    }
+
+    /**
+     * 在mysql中查询题目信息
+     * @param id
+     * @return
+     */
+    private Question loadQuestionFromDb(Long id){
         //1. 获取题目基本信息
         Question question = getById(id);
         if(ObjectUtils.isEmpty(question)){
@@ -105,8 +129,8 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
             question.setChoices(questionChoices);
         }
 
-        //4. 通过redis的zset设置题目热度
-        incrementHotScore(question.getId());
+//        //4. 通过redis的zset设置题目热度
+//        incrementHotScore(question.getId());
 
         return question;
     }
@@ -204,6 +228,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         }
 
         questionAnswerMapper.updateById(questionAnswer);
+
+        //4. 删除缓存
+        cacheClient.evict(RedisConstant.QUESTION_DETAIL_KEY + question.getId());
     }
 
     /**
@@ -230,6 +257,9 @@ public class QuestionServiceImpl extends ServiceImpl<QuestionMapper, Question> i
         LambdaQueryWrapper<QuestionChoice> choiceWrapper = new LambdaQueryWrapper<QuestionChoice>();
         choiceWrapper.eq(QuestionChoice::getQuestionId, id);
         questionChoiceMapper.delete(choiceWrapper);
+
+        //5. 删除缓存
+        cacheClient.evict(RedisConstant.QUESTION_DETAIL_KEY + id);
     }
 
 

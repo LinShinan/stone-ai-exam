@@ -3,16 +3,22 @@ package com.stone.aiexam.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.stone.aiexam.common.RedisConstant;
 import com.stone.aiexam.entity.Notice;
 import com.stone.aiexam.mapper.NoticeMapper;
 import com.stone.aiexam.service.NoticeService;
+import com.stone.aiexam.utils.CacheClient;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> implements NoticeService {
 
+    @Autowired
+    private CacheClient cacheClient;
 
     /**
      * 获取最新的启用的公告
@@ -27,6 +33,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
                 .orderByDesc(Notice::getPriority)
                 .orderByDesc(Notice::getCreateTime)
                 .last("LIMIT "+limit);
+
         return list(queryWrapper);
     }
 
@@ -41,6 +48,7 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
         queryWrapper.eq(Notice::getIsActive,true)
                 .orderByDesc(Notice::getPriority)
                 .orderByDesc(Notice::getCreateTime);
+
         return list(queryWrapper);
     }
 
