@@ -5,6 +5,8 @@ import com.stone.aiexam.entity.Banner;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 
 public interface BannerService extends IService<Banner> {
 
@@ -14,4 +16,10 @@ public interface BannerService extends IService<Banner> {
      * @return
      */
     String uploadBannerImage(MultipartFile file);
+
+    /**
+     * 获取前台（激活的）轮播图列表
+     * @return
+     */
+    List<Banner> getActiveBannerList();
 }

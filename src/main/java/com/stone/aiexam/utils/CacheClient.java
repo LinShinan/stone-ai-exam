@@ -5,7 +5,9 @@ import cn.hutool.json.JSONUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
@@ -62,8 +64,41 @@ public class CacheClient {
             return t;
         }
         //4. mysql如果不存在，设置缓存为null防止缓存穿透 ,并返回Null
-        stringRedisTemplate.opsForValue().set(key,"",2,TimeUnit.MINUTES);
+        stringRedisTemplate.opsForValue().set(key,"",5,TimeUnit.MINUTES);
         return null;
+    }
+
+    /**
+     * 查询列表，防止缓存穿透
+     * @param key
+     * @param elementType
+     * @param loader
+     * @param time
+     * @param unit
+     * @return
+     * @param <T>
+     */
+    public <T> List<T> queryList(String key,Class<T> elementType,
+                                 Supplier<List<T>> loader, Long time,TimeUnit unit){
+        //1. 查询缓存
+        String json = stringRedisTemplate.opsForValue().get(key);
+        if(StrUtil.isNotBlank(json)){
+            return JSONUtil.toList(json,elementType);
+        }
+        if(json!=null){ // "" 穿透标记，返回空列表
+            return Collections.emptyList();
+        }
+
+        //2. 缓存不存在，查mysql
+        List<T> list = loader.get();
+
+        //3. 写缓存
+        if(!CollectionUtils.isEmpty(list)){
+            this.set(key,list,time,unit);
+            return list;
+        }
+        stringRedisTemplate.opsForValue().set(key,"",5L,TimeUnit.MINUTES);
+        return Collections.emptyList();
     }
 
 
@@ -74,6 +109,8 @@ public class CacheClient {
     public void evict(String key){
         stringRedisTemplate.delete(key);
     }
+
+
 
 
 }

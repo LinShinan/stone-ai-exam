@@ -2,9 +2,11 @@ package com.stone.aiexam.controller.admin;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.stone.aiexam.common.RedisConstant;
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.entity.Banner;
 import com.stone.aiexam.service.BannerService;
+import com.stone.aiexam.utils.CacheClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +25,9 @@ public class AdminBannerController {
 
     @Autowired
     private BannerService bannerService;
+
+    @Autowired
+    private CacheClient cacheClient;
 
 
     /**
@@ -54,6 +59,7 @@ public class AdminBannerController {
         updateWrapper.set(Banner::getIsActive,isActive);
         bannerService.update(updateWrapper);//数据库中已设置自动更新修改时间，所以此处不需要设置修改时间
 
+        cacheClient.evict(RedisConstant.BANNER_ACTIVE_KEY);
         log.info("轮播图{}已{}", id, isActive ? "启用" : "禁用");
         return Result.success();
     }
@@ -68,6 +74,7 @@ public class AdminBannerController {
     @DeleteMapping("/delete/{id}")
     public Result<Void> deleteBannerById(@PathVariable Long id){
         bannerService.removeById(id);
+        cacheClient.evict(RedisConstant.BANNER_ACTIVE_KEY);
         log.info("id={}的轮播图已删除", id);
         return Result.success();
     }
@@ -95,6 +102,7 @@ public class AdminBannerController {
     @PostMapping("/upload-image")
     public Result<String> uploadBannerImage(@RequestParam("file") MultipartFile file){
         String imageUrl = bannerService.uploadBannerImage(file);
+        log.info("上传图片成功，图片路径: {}", imageUrl);
         return Result.success("上传成功", imageUrl);
     }
 
@@ -107,6 +115,8 @@ public class AdminBannerController {
     @PostMapping("/add")
     public Result<Void> addBanner(@RequestBody Banner banner){
         bannerService.save(banner);
+
+        cacheClient.evict(RedisConstant.BANNER_ACTIVE_KEY);
         log.info("新增id={}的轮播图", banner.getId()); //save() 默认回填自增主键，无需手动查询
         return Result.success();
     }
@@ -120,6 +130,7 @@ public class AdminBannerController {
     @PutMapping("/update")
     public Result<Void> updateBanner(@RequestBody Banner banner){
         bannerService.updateById(banner);
+        cacheClient.evict(RedisConstant.BANNER_ACTIVE_KEY);
         log.info("id={}的轮播图更新成功", banner.getId());
         return Result.success();
     }

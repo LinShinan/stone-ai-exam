@@ -1,8 +1,10 @@
 package com.stone.aiexam.controller.admin;
 
+import com.stone.aiexam.common.RedisConstant;
 import com.stone.aiexam.common.Result;
 import com.stone.aiexam.entity.Notice;
 import com.stone.aiexam.service.NoticeService;
+import com.stone.aiexam.utils.CacheClient;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,9 @@ public class AdminNoticeController {
     @Autowired
     private NoticeService noticeService;
 
+    @Autowired
+    private CacheClient cacheClient;
+
     @Operation(summary = "公告列表")
     @GetMapping("/list")
     public Result<List<Notice>> list() {
@@ -33,6 +38,8 @@ public class AdminNoticeController {
     @PostMapping("/add")
     public Result<Void> add(@RequestBody Notice notice) {
         noticeService.save(notice);
+
+        cacheClient.evict(RedisConstant.NOTICE_ACTIVE_KEY);
         log.info("新增公告id={}", notice.getId());
         return Result.success();
     }
@@ -41,6 +48,8 @@ public class AdminNoticeController {
     @PutMapping("/update")
     public Result<Void> update(@RequestBody Notice notice) {
         noticeService.updateById(notice);
+
+        cacheClient.evict(RedisConstant.NOTICE_ACTIVE_KEY);
         log.info("更新公告id={}", notice.getId());
         return Result.success();
     }
@@ -49,6 +58,8 @@ public class AdminNoticeController {
     @PutMapping("/switch/{id}")
     public Result<Void> toggle(@PathVariable Long id, @RequestParam boolean isActive) {
         noticeService.enableOrDisableNotice(id, isActive);
+
+        cacheClient.evict(RedisConstant.NOTICE_ACTIVE_KEY);
         log.info("公告{}已{}", id, isActive ? "启用" : "禁用");
         return Result.success();
     }
@@ -57,6 +68,7 @@ public class AdminNoticeController {
     @DeleteMapping("/delete/{id}")
     public Result<Void> delete(@PathVariable Long id) {
         noticeService.removeById(id);
+        cacheClient.evict(RedisConstant.NOTICE_ACTIVE_KEY);
         log.info("删除公告id={}", id);
         return Result.success();
     }

@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> implements NoticeService {
@@ -28,13 +29,9 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
     @Override
     public List<Notice> getLatestActiveNoticeList(int limit) {
         // 1.只查询启用的 2.按创建优先级，时间降序 3.限制条数
-        LambdaQueryWrapper<Notice> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.eq(Notice::getIsActive,true)
-                .orderByDesc(Notice::getPriority)
-                .orderByDesc(Notice::getCreateTime)
-                .last("LIMIT "+limit);
+        List<Notice> all = getActiveNoticeList();  // 复用缓存
+        return all.stream().limit(limit).collect(Collectors.toList());
 
-        return list(queryWrapper);
     }
 
     /**
@@ -49,7 +46,8 @@ public class NoticeServiceImpl extends ServiceImpl<NoticeMapper, Notice> impleme
                 .orderByDesc(Notice::getPriority)
                 .orderByDesc(Notice::getCreateTime);
 
-        return list(queryWrapper);
+        return cacheClient.queryList(RedisConstant.NOTICE_ACTIVE_KEY, Notice.class,
+                () -> list(queryWrapper), RedisConstant.NOTICE_ACTIVE_TTL, TimeUnit.MINUTES);
     }
 
     /**

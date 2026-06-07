@@ -32,11 +32,7 @@ public class CommonBannerController {
     @Operation(summary = "获取激活轮播图列表")
     @GetMapping("/active")
     public Result<List<Banner>> getActiveBannerList(){
-        LambdaQueryWrapper<Banner> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.orderByAsc(Banner::getSortOrder);
-        queryWrapper.eq(Banner::getIsActive,true);
-
-        List<Banner> bannerList = bannerService.list(queryWrapper);
+        List<Banner> bannerList = bannerService.getActiveBannerList();
         log.info("激活的轮播图: {}", bannerList);
         return Result.success(bannerList);
     }
